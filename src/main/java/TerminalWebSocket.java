@@ -31,6 +31,8 @@ public class TerminalWebSocket {
     private Gson gson;
     private Logger log;
     private Map<Session, FileSystem> sessions;
+    private Map<Session, Date> sessionTimes;
+    private List<Session> queue;
     private Jedis jedis;
 
     public TerminalWebSocket() {
@@ -38,17 +40,27 @@ public class TerminalWebSocket {
         log = LoggerFactory.getLogger(TerminalWebSocket.class);
         gson = new Gson();
         sessions = new HashMap<>();
+        sessionTimes = new HashMap<>();
+        queue = new ArrayList<>();
     }
 
     @OnWebSocketConnect
     public void connected(Session session) {
-        if (sessions.size() == 1024) send(session, new Result(calculateWaitTime(), "__wait__")); // todo x in queue
-        sessions.put(session, createLegitFs(Jimfs.newFileSystem(Configuration.unix())));
-        send(session, new Result(session.getRemoteAddress().getAddress().toString().replace("/", ""), "__init__"));
+        if (sessions.size() == 1024) send(session, new Result(generateWaitResponse(session), "__wait__"));
+        else {
+            if (queue.contains(session)) queue.remove(session);
+            sessions.put(session, createLegitFs(Jimfs.newFileSystem(Configuration.unix())));
+            sessionTimes.put(session, new Date());
+            send(session, new Result(session.getRemoteAddress().getAddress().toString().replace("/", ""), "__init__"));
+        }
     }
 
     @OnWebSocketClose
     public void closed(Session session, int statusCode, String reason) {
+        if (queue.contains(session)) queue.remove(session);
+        updateAvgTime(session);
+        sessionTimes.remove(session);
+        // todo store fs for reloading even after reboot
     }
 
     @OnWebSocketMessage
@@ -77,9 +89,21 @@ public class TerminalWebSocket {
         }
     }
 
-    private String calculateWaitTime() {
-        // todo based upon earlier overflows -> save userCount every x timeUnits
-        return "5";
+    private void updateAvgTime(Session s) {
+        JsonObject o = gson.fromJson(jedis.get("termsock.avg.time"), JsonObject.class);
+        long sec = new Date().getTime() - sessionTimes.get(s).getTime();
+        JsonObject n = new JsonObject();
+        n.addProperty("time", (o.get("time").getAsLong() + sec) / 2);
+        n.addProperty("count", o.get("count").getAsInt() + 1);
+        jedis.set("termsock.avg.time", gson.toJson(n));
+    }
+
+    private String generateWaitResponse(Session session) {
+        queue.add(session);
+        JsonObject o = new JsonObject();
+        o.addProperty("position", queue.indexOf(session));
+        o.addProperty("time", jedis.get("termsock.avg.time"));
+        return gson.toJson(o);
     }
 
     private Result help() {
@@ -93,7 +117,7 @@ public class TerminalWebSocket {
     }
 
     private Result catFile(FileSystem fs, cat c) {
-        Result r = new Result(c.cmd, "cat"); // todo
+        Result r = new Result(c.cmd, "cat");
         if (c.help) {
             r.result = "Usage: cat [FILE]<br>";
             r.success = false;
@@ -125,7 +149,7 @@ public class TerminalWebSocket {
 
     }
 
-    private Result cdDirectory(FileSystem fs, cd c) { // todo check if directory actually exists
+    private Result cdDirectory(FileSystem fs, cd c) {
         Result r = new Result("", "cd");
         if (c.help) {
             r.result = "cd: usage: cd [dir]<br>";
@@ -185,8 +209,7 @@ public class TerminalWebSocket {
     private void listDirectory(FileSystem fs, String path, Consumer<Path> consumer) {
         try {
             Files.list(fs.getPath(path)).forEach(consumer);
-        } catch (IOException e) {
-        }
+        } catch (IOException e) { /* todo */}
     }
 
     private FileSystem createLegitFs(FileSystem fs) {
