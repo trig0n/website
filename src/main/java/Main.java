@@ -7,7 +7,9 @@ import redis.clients.jedis.Jedis;
 import redis.clients.jedis.ScanParams;
 import spark.Request;
 
-import java.lang.management.ManagementFactory;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 import static spark.Spark.*;
@@ -49,20 +51,21 @@ class Server {
     private Jedis jedis;
     private Gson gson;
     private Logger log;
+    private DateTimeFormatter DATE_FORMAT;
 
     Server() {
         jedis = new Jedis("localhost");
         jinja = new Jinjava();
         gson = new Gson();
         log = LoggerFactory.getLogger(Main.class);
+        DATE_FORMAT = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
         initDatabase();
     }
 
     private void initDatabase() {
         if (jedis.get("stat.hits") == null) jedis.set("stat.hits", Integer.toString(0));
         if (jedis.get("stat.scans") == null) jedis.set("stat.scans", Integer.toString(0));
-        if (jedis.get("stat.uptime") == null)
-            jedis.set("stat.uptime", Long.toString(ManagementFactory.getRuntimeMXBean().getUptime()));
+        jedis.set("stat.bootTime", LocalDateTime.now().format(DATE_FORMAT));
     }
 
     private JsonObject updatePathCounts(Request req, JsonObject old) {
@@ -89,12 +92,11 @@ class Server {
             port(settings.port);
         }
         staticFiles.location("static/");
+
         webSocket("/termsock", TerminalWebSocket.class);
 
         before("/*", (req, resp) -> {
-            JsonObject old = gson.fromJson(jedis.get("ip." + req.ip()), JsonObject.class);
-            old = updatePathCounts(req, old); // todo update more
-            jedis.set("ip." + req.ip(), gson.toJson(old));
+            checkRequest(req);
         });
 
         get("/cli", (req, resp) -> {
@@ -112,7 +114,8 @@ class Server {
         path("/api", () -> {
             path("/content", () -> {
                 post("/event", (req, resp) -> {
-                    resp.body(getEventHtml(gson.fromJson(req.body(), ContentRequest.class).name));
+                    ContentRequest cr = gson.fromJson(req.body(), ContentRequest.class);
+                    resp.body(getEventHtml(cr.name));
                     return resp;
                 });
 
@@ -122,21 +125,16 @@ class Server {
                     return resp;
                 });
 
-                get("/feed", (req, resp) -> {
-                    resp.body(gson.toJson(new ContentResponse("feedItems", gson.toJson(collectEvents()))));
-                    return resp;
-                });
-
-                post("/image", (req, resp) -> {
+                post("/search", (req, resp) -> {
                     ContentRequest cr = gson.fromJson(req.body(), ContentRequest.class);
-                    resp.body(gson.toJson(getImage(cr.name)));
+                    resp.body(gson.toJson(new ContentResponse("searchResults", getSearchHtml(cr.name))));
                     return resp;
                 });
             });
 
             post("/stat", (req, resp) -> {
+                System.out.println(req.ip());
                 ContentRequest cr = gson.fromJson(req.body(), ContentRequest.class);
-                System.out.println(cr);
                 resp.body(gson.toJson(new ContentResponse(cr.name, jedis.get("stat." + cr.name))));
                 return resp;
             });
@@ -146,12 +144,12 @@ class Server {
                 return resp;
             });
 
-            post("/search", (req, resp) -> {
-                ContentRequest cr = gson.fromJson(req.body(), ContentRequest.class);
-                resp.body(gson.toJson(new ContentResponse("searchResults", gson.toJson(collectEvents(cr.name)))));
-                return resp;
-            });
+        });
 
+        get("/robots.txt", (req, resp) -> {
+            resp.body("User-Agent: *\r\nDisallow: /cli\n");
+            resp.header("Content-Type", "text/plain");
+            return resp;
         });
 
         after((req, resp) -> resp.header("Content-Encoding", "gzip"));
@@ -159,61 +157,83 @@ class Server {
         awaitInitialization();
     }
 
-    private ContentResponse getImage(String name) {
-        ContentResponse cr = new ContentResponse();
-        if (!name.contains(".")) {
-            cr.name = name;
-            cr.data = "";
-        } else {
-            cr.name = name;
-            cr.data = jedis.get("img." + name);
-        }
-        return cr;
-    }
-
-    private List<Event> _collectSortedEvents() {
-        List<Event> events = new ArrayList<>();
-        for (String key : jedis.scan("0", new ScanParams().match("event.*")).getResult())
-            events.add(gson.fromJson(jedis.get(key), Event.class));
-        Collections.sort(events, Comparator.comparingInt(Event::getId).reversed());
-        return events;
-    }
-
-    private List<String> collectEvents(String partOf) {
-        List<Event> f = new ArrayList<>();
-        for (Event e : _collectSortedEvents()) {
-            if (e.name.contains(partOf)) f.add(e);
-        }
-        List<String> r = new ArrayList<>();
-        for (Event e : f) r.add(jinja.render(jedis.get("template.feedItem"), e.toHashMap()));
-        return r;
-    }
-
-    private List<String> collectEvents() {
-        List<Event> events = _collectSortedEvents();
-        List<String> r = new ArrayList<>();
-        for (Event e : events) r.add(jinja.render(jedis.get("template.feedItem"), e.toHashMap()));
-        return r;
-    }
-
-    private String getPageHtml(String key) {
-        String _p = jedis.get("page." + key);
-        String p = _p == null ? "<h4>404</h4><br>" + key + " not found." : _p;
-        HashMap<String, Object> objects = new HashMap<>();
-        objects.put("title", key);
-        return jinja.render(p, objects);
+    private String getSearchHtml(String key) {
+        HashMap<String, Object> o = new HashMap<>();
+        o.put("feed", eventsToHashMaps(collectEvents(key)));
+        return jinja.render(jedis.get("page.feed"), o);
     }
 
     private String getEventHtml(String key) {
         return gson.fromJson(jedis.get("event." + key), Event.class).html;
     }
 
-    /*
-    private class SearchRequest {
-        String data;
-        SearchRequest(){}
+    private void checkRequest(Request r) {
+        if (scanRequest(r)) jedis.incr("stat.scans");
+        else jedis.incr("stat.hits");
+        JsonObject old = gson.fromJson(jedis.get("ip." + r.ip()), JsonObject.class);
+        old = updatePathCounts(r, old); // todo update more
+        jedis.set("ip." + r.ip(), gson.toJson(old));
     }
-    */
+
+    private boolean scanRequest(Request r) {
+        if (r.url().equals("/robots.txt")) return true;
+        if (r.url().contains("wp-admin")) return true;
+        // lookup table of paths and parameters
+        return false;
+    }
+
+    private List<Event> _collectSortedEvents() {
+        List<Event> events = new ArrayList<>();
+        for (String key : jedis.scan("0", new ScanParams().match("event.*")).getResult()) {
+            events.add(gson.fromJson(jedis.get(key), Event.class));
+        }
+        Collections.sort(events, Comparator.comparingInt(Event::getId).reversed());
+        return events;
+    }
+
+    private List<Event> collectEvents(String partOf) {
+        List<Event> f = new ArrayList<>();
+        for (Event e : _collectSortedEvents()) {
+            System.out.println(e.name);
+            if (e.name.contains(partOf)) f.add(e);
+        }
+        return f;
+    }
+
+    private List<HashMap<String, Object>> eventsToHashMaps(List<Event> e) {
+        List<HashMap<String, Object>> events = new ArrayList<>();
+        for (Event _e : e) events.add(_e.toHashMap());
+        return events;
+    }
+
+    private String getPageHtml(String key) {
+        HashMap<String, Object> objects = new HashMap<>();
+        objects.put("title", key);
+        String data;
+        switch (key) {
+            case "about":
+                data = jedis.get("page.about");
+                break;
+            case "contact":
+                data = jedis.get("page.contact");
+                break;
+            case "feed":
+                data = jedis.get("page.feed");
+                objects.put("feed", eventsToHashMaps(_collectSortedEvents()));
+                break;
+            case "home":
+                data = jedis.get("page.home");
+                objects.put("hits", jedis.get("stat.hits"));
+                objects.put("scans", jedis.get("stat.scans"));
+                String bootTime = jedis.get("stat.bootTime");
+                objects.put("bootTime", bootTime);
+                objects.put("runTime", LocalDateTime.parse(bootTime, DATE_FORMAT).until(LocalDateTime.now(), ChronoUnit.HOURS));
+                break;
+            default:
+                data = "<h4>404</h4><br>" + key + " not found.";
+        }
+        return jinja.render(data, objects);
+    }
 
     private class Event {
         Integer id;
