@@ -66,8 +66,9 @@ function _init(data) {
 }
 
 function _wait(data) {
-    terminalPrint("too many people using this server. waiting " + data["result"] + "seconds.");
-    setTimeout(initWebsocket, parseInt(data["result"]));
+    ws.close();
+    terminalPrint("there are " + data["result"]["position"] - 1 + " people in front of you. waiting " + data["result"]["time"] + "seconds.");
+    setTimeout(initWebsocket, parseInt(data["result"]["time"]));
 }
 
 // init ws & register callbacks
@@ -87,8 +88,6 @@ function onMessage(ev) {
 
 // should only happen at exit
 function onClose() {
-    document.onclick = function () {
-    };
     _cursor.style.visibility = "hidden";
     _cursor = null;
     _input.setAttribute("contenteditable", false);
