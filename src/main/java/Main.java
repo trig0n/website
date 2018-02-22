@@ -95,9 +95,7 @@ class Server {
 
         webSocket("/termsock", TerminalWebSocket.class);
 
-        before("/*", (req, resp) -> {
-            checkRequest(req);
-        });
+        before("/*", (req, resp) -> checkRequest(req));
 
         get("/cli", (req, resp) -> {
             Map<String, Object> objs = new HashMap<>();
@@ -176,10 +174,8 @@ class Server {
     }
 
     private boolean scanRequest(Request r) {
-        if (r.url().equals("/robots.txt")) return true;
-        if (r.url().contains("wp-admin")) return true;
+        return r.url().contains("wp-admin") || r.url().equals("/robots.txt");
         // lookup table of paths and parameters
-        return false;
     }
 
     private List<Event> _collectSortedEvents() {
@@ -266,9 +262,6 @@ class Server {
     private class ContentResponse {
         String name;
         String data;
-
-        ContentResponse() {
-        }
 
         ContentResponse(String name, String data) {
             this.name = name;
