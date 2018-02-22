@@ -1,13 +1,21 @@
 let cookie = {};
 
-function setActive(menuId) {
-    cookie["page"] = menuId;
-    writeCookie(cookie);
+function setActive(name) {
+    setCookiePage(name);
+    setSideNavButtonActive(name);
+    request("/api/content/page", "POST", JSON.stringify({"name": name}), gotContent);
+}
+
+function setSideNavButtonActive(name) {
     let btns = ["home", "about", "contact", "feed"];
-    btns.splice(btns.indexOf(menuId), 1);
+    btns.splice(btns.indexOf(name), 1);
     for (let i = 0; i < btns.length; i++) document.getElementById(btns[i]).classList.remove("is-active");
-    document.getElementById(menuId).classList.add('is-active');
-    request("/api/content/page", "POST", JSON.stringify({"name": menuId}), gotContent);
+    document.getElementById(name).classList.add('is-active');
+}
+
+function setCookiePage(page) {
+    cookie["page"] = page;
+    writeCookie(cookie);
 }
 
 function parseCookie() {
@@ -34,7 +42,10 @@ function gotContent(data) {
     data = JSON.parse(data);
     document.getElementById("searchResults").innerHTML = "";
     document.getElementById("content").innerHTML = data["data"];
-    doEval(data["data"]);
+}
+
+function overwriteContent(data) {
+    document.getElementById("content").innerHTML = data;
 }
 
 function request(url, method, data, callback) {
@@ -47,38 +58,14 @@ function request(url, method, data, callback) {
     xhr.send(data);
 }
 
-function overwriteContent(data) {
-    document.getElementById("searchResults").innerHTML = "";
-    document.getElementById("content").innerHTML = data;
-}
-
-function loadImage(data) {
-    document.getElementById(data["name"]).src = "data:image/png;base64," + data["data"];
-}
-
-function doEval(data) {
-    if (data.indexOf("<script>") !== -1 && data.indexOf("</script>") !== -1) {
-        eval(data.split("<script>")[1].split("</script>")[0]);
-    }
-}
-
-function append(data) {
+function searchResults(data) {
     data = JSON.parse(data);
-    document.getElementById(data["name"]).innerHTML = "";
-    if (data["name"] === "searchResults") document.getElementById("content").innerHTML = "";
-    let _d = JSON.parse(data["data"]);
-    for (let s in _d) {
-        document.getElementById(data["name"]).innerHTML += _d[s];
-        doEval(_d[s]);
-    }
-}
-
-function execScript(data) {
-    eval(data["data"]);
+    if (data !== undefined) document.getElementById("searchResults").innerHTML = data["data"];
+    else document.getElementById("searchResults").innerHTML = '<div class="notification is-warning"><button class="delete">sorry. could not find anything</button>'
 }
 
 function search(data) {
-    request("/api/search", "POST", JSON.stringify({"name": data}), append)
+    request("/api/content/search", "POST", JSON.stringify({"name": data}), searchResults)
 }
 
 let p = null;
@@ -96,41 +83,29 @@ function fillCanvas(color) {
     c.fillRect(0, 0, canvas.width, canvas.height);
 }
 
-function toggleLoading(c) {
-    c.classList.toggle('is-loading')
-}
-
 function unregisterBackgrounds() {
     p.pauseAnimation();
     m.stopDrawing();
 }
 
-function dynamicBackground(c) {
-    toggleLoading(c);
+function dynamicBackground() {
     unregisterBackgrounds();
     p.resumeAnimation();
-    toggleLoading(c);
 }
 
-function whiteBackground(c) {
-    toggleLoading(c);
+function whiteBackground() {
     unregisterBackgrounds();
     fillCanvas("white");
-    toggleLoading(c);
 }
 
-function mandelbrotBackground(c) {
-    toggleLoading(c);
+function mandelbrotBackground() {
     unregisterBackgrounds();
     m.draw();
-    toggleLoading(c);
 }
 
 function dynamicMandelbrotBackground(c) {
-    toggleLoading(c);
     unregisterBackgrounds();
     m.drawProcedurally(42, 8400);
-    toggleLoading(c);
 }
 
 window.onload = function () {
