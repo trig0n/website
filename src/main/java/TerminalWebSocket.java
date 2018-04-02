@@ -1,11 +1,10 @@
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableList;
 import com.google.common.io.Resources;
 import com.google.common.jimfs.Configuration;
 import com.google.common.jimfs.Jimfs;
-import com.google.gson.Gson;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketClose;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
@@ -28,7 +27,6 @@ public class TerminalWebSocket {
     private static final String CD_NOT_FOUND = "cd: {{d}}: No such file or directory";
     private static final String LS_NOT_FOUND = "ls: cannot access {{d}}: No such file or directory";
     private static final String CAT_NOT_FOUND = "cat: {{d}}: No such file or directory";
-    private Gson gson;
     private Logger log;
     private Map<Session, FileSystem> sessions;
     private Map<Session, Date> sessionTimes;
@@ -38,7 +36,6 @@ public class TerminalWebSocket {
     public TerminalWebSocket() {
         this.jedis = new Jedis();
         log = LoggerFactory.getLogger(TerminalWebSocket.class);
-        gson = new Gson();
         sessions = new HashMap<>();
         sessionTimes = new HashMap<>();
         queue = new ArrayList<>();
@@ -65,7 +62,7 @@ public class TerminalWebSocket {
 
     @OnWebSocketMessage
     public void message(Session session, String message) { // todo startx for gui
-        Request r = gson.fromJson(message, Request.class);
+        Request r = JSON.parseObject(message, Request.class);
         Command c = new Command(r);
         log.info(session.getRemoteAddress().getAddress() + ":" + session.getRemoteAddress().getPort() + " - " + c.cmd + " " + c.args);
         switch (c.cmd) {
@@ -90,20 +87,20 @@ public class TerminalWebSocket {
     }
 
     private void updateAvgTime(Session s) {
-        JsonObject o = gson.fromJson(jedis.get("termsock.avg.time"), JsonObject.class);
+        JSONObject o = JSON.parseObject(jedis.get("termsock.avg.time"), JSONObject.class);
         long sec = new Date().getTime() - sessionTimes.get(s).getTime();
-        JsonObject n = new JsonObject();
-        n.addProperty("time", (o.get("time").getAsLong() + sec) / 2);
-        n.addProperty("count", o.get("count").getAsInt() + 1);
-        jedis.set("termsock.avg.time", gson.toJson(n));
+        JSONObject n = new JSONObject();
+        n.put("time", (o.getInteger("time") + sec) / 2);
+        n.put("count", o.getInteger("count") + 1);
+        jedis.set("termsock.avg.time", JSON.toJSONString(n));
     }
 
     private String generateWaitResponse(Session session) {
         queue.add(session);
-        JsonObject o = new JsonObject();
-        o.addProperty("position", queue.indexOf(session));
-        o.addProperty("time", jedis.get("termsock.avg.time"));
-        return gson.toJson(o);
+        JSONObject o = new JSONObject();
+        o.put("position", queue.indexOf(session));
+        o.put("time", jedis.get("termsock.avg.time"));
+        return JSON.toJSONString(o);
     }
 
     private Result help() {
@@ -226,12 +223,11 @@ public class TerminalWebSocket {
     }
 
     private void _createFiles(FileSystem fs) throws IOException, NullPointerException {
-        for (JsonElement _file : gson.fromJson(jedis.get("fs.config"), JsonObject.class).getAsJsonArray()) {
-            JsonObject file = _file.getAsJsonObject();
-            Path path = fs.getPath(file.get("path").getAsString());
+        for (JSONObject file : JSON.parseArray(jedis.get("fs.config"), JSONObject.class)) {
+            Path path = fs.getPath(file.getString("path"));
             Files.createDirectories(path);
-            Path f = path.resolve(file.get("name").getAsString());
-            Files.write(f, ImmutableList.of(file.get("data").getAsString()), StandardCharsets.UTF_8);
+            Path f = path.resolve(file.getString("name"));
+            Files.write(f, ImmutableList.of(file.getString("data")), StandardCharsets.UTF_8);
         }
     }
 
@@ -273,7 +269,7 @@ public class TerminalWebSocket {
 
     private void send(Session session, Result result) {
         try {
-            session.getRemote().sendString(gson.toJson(result));
+            session.getRemote().sendString(JSON.toJSONString(result));
         } catch (IOException e) {
             e.printStackTrace();
         }

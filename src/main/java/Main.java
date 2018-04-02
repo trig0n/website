@@ -1,5 +1,5 @@
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.hubspot.jinjava.Jinjava;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,14 +49,12 @@ class Settings {
 class Server {
     private Jinjava jinja;
     private Jedis jedis;
-    private Gson gson;
     private Logger log;
     private DateTimeFormatter DATE_FORMAT;
 
     Server() {
         jedis = new Jedis("localhost");
         jinja = new Jinjava();
-        gson = new Gson();
         log = LoggerFactory.getLogger(Main.class);
         DATE_FORMAT = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
         initDatabase();
@@ -66,21 +64,6 @@ class Server {
         if (jedis.get("stat.hits") == null) jedis.set("stat.hits", Integer.toString(0));
         if (jedis.get("stat.scans") == null) jedis.set("stat.scans", Integer.toString(0));
         jedis.set("stat.bootTime", LocalDateTime.now().format(DATE_FORMAT));
-    }
-
-    private JsonObject updatePathCounts(Request req, JsonObject old) {
-        JsonObject pathCounts;
-        if (old == null) old = new JsonObject();
-        if (old.has("count")) {
-            pathCounts = old.get("count").getAsJsonObject();
-            if (pathCounts.has(req.pathInfo()))
-                pathCounts.addProperty(req.pathInfo(), pathCounts.get(req.pathInfo()).getAsInt() + 1);
-        } else {
-            pathCounts = new JsonObject();
-            pathCounts.addProperty(req.pathInfo(), 1);
-        }
-        old.add("count", pathCounts);
-        return old;
     }
 
     public void main(Settings settings) {
@@ -99,42 +82,42 @@ class Server {
 
         get("/cli", (req, resp) -> {
             Map<String, Object> objs = new HashMap<>();
-            resp.body(jinja.render(jedis.get("template.cli"), objs));
-            return resp;
+            return jinja.render(jedis.get("template.cli"), objs);
         });
 
         get("/", (req, resp) -> {
             Map<String, Object> objs = new HashMap<>();
-            resp.body(jinja.render(jedis.get("template.gui"), objs));
-            return resp;
+            return jinja.render(jedis.get("template.gui"), objs);
         });
 
         path("/api", () -> {
             path("/content", () -> {
                 post("/event", (req, resp) -> {
-                    ContentRequest cr = gson.fromJson(req.body(), ContentRequest.class);
-                    resp.body(getEventHtml(cr.name));
-                    return resp;
+                    JSONObject cr = JSON.parseObject(req.body(), JSONObject.class);
+                    return getEventHtml(cr.getString("name"));
                 });
 
                 post("/page", (req, resp) -> {
-                    ContentRequest cr = gson.fromJson(req.body(), ContentRequest.class);
-                    resp.body(gson.toJson(new ContentResponse(cr.name, getPageHtml(cr.name))));
-                    return resp;
+                    JSONObject cr = JSON.parseObject(req.body(), JSONObject.class);
+                    JSONObject r = new JSONObject();
+                    r.put("data", getPageHtml(cr.getString("name")));
+                    return r.toJSONString();
                 });
 
                 post("/search", (req, resp) -> {
-                    ContentRequest cr = gson.fromJson(req.body(), ContentRequest.class);
-                    resp.body(gson.toJson(new ContentResponse("searchResults", getSearchHtml(cr.name))));
-                    return resp;
+                    JSONObject cr = JSON.parseObject(req.body(), JSONObject.class);
+                    JSONObject r = new JSONObject();
+                    r.put("searchResults", getSearchHtml(cr.getString("name")));
+                    return r.toJSONString();
                 });
             });
 
             post("/stat", (req, resp) -> {
                 System.out.println(req.ip());
-                ContentRequest cr = gson.fromJson(req.body(), ContentRequest.class);
-                resp.body(gson.toJson(new ContentResponse(cr.name, jedis.get("stat." + cr.name))));
-                return resp;
+                JSONObject cr = JSON.parseObject(req.body(), JSONObject.class);
+                JSONObject r = new JSONObject();
+                r.put(cr.getString("string"), jedis.get("stat." + cr.getString("name")));
+                return r.toJSONString();
             });
 
             get("/status", (req, resp) -> {
@@ -150,8 +133,6 @@ class Server {
             return resp;
         });
 
-        after((req, resp) -> resp.header("Content-Encoding", "gzip"));
-
         awaitInitialization();
     }
 
@@ -162,15 +143,30 @@ class Server {
     }
 
     private String getEventHtml(String key) {
-        return gson.fromJson(jedis.get("event." + key), Event.class).html;
+        return JSON.parseObject(jedis.get("event." + key), Event.class).getHtml();
     }
 
     private void checkRequest(Request r) {
         if (scanRequest(r)) jedis.incr("stat.scans");
         else jedis.incr("stat.hits");
-        JsonObject old = gson.fromJson(jedis.get("ip." + r.ip()), JsonObject.class);
+        JSONObject old = JSON.parseObject(jedis.get("ip." + r.ip()), JSONObject.class);
         old = updatePathCounts(r, old); // todo update more
-        jedis.set("ip." + r.ip(), gson.toJson(old));
+        jedis.set("ip." + r.ip(), JSON.toJSONString(old));
+    }
+
+    private JSONObject updatePathCounts(Request req, JSONObject old) {
+        JSONObject pathCounts;
+        if (old == null) old = new JSONObject();
+        if (old.containsKey("count")) {
+            pathCounts = old.getJSONObject("count");
+            if (pathCounts.containsKey(req.pathInfo()))
+                pathCounts.put(req.pathInfo(), pathCounts.getInteger(req.pathInfo()) + 1);
+        } else {
+            pathCounts = new JSONObject();
+            pathCounts.put(req.pathInfo(), 1);
+        }
+        old.put("count", pathCounts);
+        return old;
     }
 
     private boolean scanRequest(Request r) {
@@ -181,7 +177,7 @@ class Server {
     private List<Event> _collectSortedEvents() {
         List<Event> events = new ArrayList<>();
         for (String key : jedis.scan("0", new ScanParams().match("event.*")).getResult()) {
-            events.add(gson.fromJson(jedis.get(key), Event.class));
+            events.add(JSON.parseObject(jedis.get(key), Event.class));
         }
         Collections.sort(events, Comparator.comparingInt(Event::getId).reversed());
         return events;
@@ -190,8 +186,8 @@ class Server {
     private List<Event> collectEvents(String partOf) {
         List<Event> f = new ArrayList<>();
         for (Event e : _collectSortedEvents()) {
-            System.out.println(e.name);
-            if (e.name.contains(partOf)) f.add(e);
+            System.out.println(e.getName());
+            if (e.getName().contains(partOf)) f.add(e);
         }
         return f;
     }
@@ -216,6 +212,7 @@ class Server {
             case "feed":
                 data = jedis.get("page.feed");
                 objects.put("feed", eventsToHashMaps(_collectSortedEvents()));
+                System.out.println(JSON.toJSONString(objects));
                 break;
             case "home":
                 data = jedis.get("page.home");
@@ -231,43 +228,6 @@ class Server {
         return jinja.render(data, objects);
     }
 
-    private class Event {
-        Integer id;
-        String name;
-        String description;
-        String html;
-
-        Event() {
-        }
-
-        HashMap<String, Object> toHashMap() {
-            HashMap<String, Object> hm = new HashMap<>();
-            hm.put("name", name);
-            hm.put("description", description);
-            return hm;
-        }
-
-        Integer getId() {
-            return id;
-        }
-    }
-
-    private class ContentRequest {
-        String name;
-
-        ContentRequest() {
-        }
-    }
-
-    private class ContentResponse {
-        String name;
-        String data;
-
-        ContentResponse(String name, String data) {
-            this.name = name;
-            this.data = data;
-        }
-    }
     /*
     private String getCountryCode(String ip){
         try{
