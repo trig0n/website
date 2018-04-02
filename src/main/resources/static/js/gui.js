@@ -45,6 +45,7 @@ function gotContent(data) {
 }
 
 function overwriteContent(data) {
+    document.getElementById("searchResults").innerHTML = "";
     document.getElementById("content").innerHTML = data;
 }
 
@@ -60,7 +61,7 @@ function request(url, method, data, callback) {
 
 function searchResults(data) {
     data = JSON.parse(data);
-    if (data !== undefined) document.getElementById("searchResults").innerHTML = data["data"];
+    if (data !== undefined) overwriteContent(data["data"]);
     else document.getElementById("searchResults").innerHTML = '<div class="notification is-warning"><button class="delete">sorry. could not find anything</button>'
 }
 

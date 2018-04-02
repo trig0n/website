@@ -14,6 +14,8 @@ import java.util.*;
 
 import static spark.Spark.*;
 
+// todo fix events not being initialized so feed is empty
+
 public class Main {
     public static void main(String[] args) {
         Server s = new Server();
@@ -107,7 +109,7 @@ class Server {
                 post("/search", (req, resp) -> {
                     JSONObject cr = JSON.parseObject(req.body(), JSONObject.class);
                     JSONObject r = new JSONObject();
-                    r.put("searchResults", getSearchHtml(cr.getString("name")));
+                    r.put("data", getSearchHtml(cr.getString("name")));
                     return r.toJSONString();
                 });
             });
@@ -138,12 +140,12 @@ class Server {
 
     private String getSearchHtml(String key) {
         HashMap<String, Object> o = new HashMap<>();
-        o.put("feed", eventsToHashMaps(collectEvents(key)));
+        o.put("feed", collectEvents(key));
         return jinja.render(jedis.get("page.feed"), o);
     }
 
     private String getEventHtml(String key) {
-        return JSON.parseObject(jedis.get("event." + key), Event.class).getHtml();
+        return JSON.parseObject(jedis.get("event." + key)).getString("html");
     }
 
     private void checkRequest(Request r) {
@@ -174,28 +176,27 @@ class Server {
         // lookup table of paths and parameters
     }
 
-    private List<Event> _collectSortedEvents() {
-        List<Event> events = new ArrayList<>();
+    private List<JSONObject> _collectSortedEvents() {
+        List<JSONObject> events = new ArrayList<>();
         for (String key : jedis.scan("0", new ScanParams().match("event.*")).getResult()) {
-            events.add(JSON.parseObject(jedis.get(key), Event.class));
+            events.add(JSON.parseObject(jedis.get(key)));
         }
-        Collections.sort(events, Comparator.comparingInt(Event::getId).reversed());
+        Collections.sort(events, new Comparator<JSONObject>() {
+            @Override
+            public int compare(JSONObject t0, JSONObject t1) {
+                return t1.getInteger("id").compareTo(t0.getInteger("id"));
+            }
+        });
         return events;
     }
 
-    private List<Event> collectEvents(String partOf) {
-        List<Event> f = new ArrayList<>();
-        for (Event e : _collectSortedEvents()) {
-            System.out.println(e.getName());
-            if (e.getName().contains(partOf)) f.add(e);
+    private List<JSONObject> collectEvents(String partOf) {
+        List<JSONObject> f = new ArrayList<>();
+        for (JSONObject e : _collectSortedEvents()) {
+
+            if (e.getString("name").toLowerCase().contains(partOf.toLowerCase())) f.add(e);
         }
         return f;
-    }
-
-    private List<HashMap<String, Object>> eventsToHashMaps(List<Event> e) {
-        List<HashMap<String, Object>> events = new ArrayList<>();
-        for (Event _e : e) events.add(_e.toHashMap());
-        return events;
     }
 
     private String getPageHtml(String key) {
@@ -211,8 +212,7 @@ class Server {
                 break;
             case "feed":
                 data = jedis.get("page.feed");
-                objects.put("feed", eventsToHashMaps(_collectSortedEvents()));
-                System.out.println(JSON.toJSONString(objects));
+                objects.put("feed", _collectSortedEvents());
                 break;
             case "home":
                 data = jedis.get("page.home");
