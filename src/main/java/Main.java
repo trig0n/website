@@ -14,7 +14,7 @@ import java.util.*;
 
 import static spark.Spark.*;
 
-// todo fix events not being initialized so feed is empty
+// todo fix js search onchange
 
 
 public class Main {
@@ -135,9 +135,11 @@ class Server {
     }
 
     private List<JSONObject> getSearchItems(JSONObject o) {
+        System.out.println(o.getString("name"));
         List<JSONObject> items = new ArrayList<>();
         for (String k : jedis.scan("0", new ScanParams().match("event." + o.getString("name").toLowerCase())).getResult())
             items.add(JSON.parseObject(jedis.get(k)));
+        System.out.println(items.size());
         return items;
     }
 
