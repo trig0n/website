@@ -16,6 +16,7 @@ import static spark.Spark.*;
 
 // todo fix events not being initialized so feed is empty
 
+
 public class Main {
     public static void main(String[] args) {
         Server s = new Server();
@@ -68,7 +69,7 @@ class Server {
         jedis.set("stat.bootTime", LocalDateTime.now().format(DATE_FORMAT));
     }
 
-    public void main(Settings settings) {
+    void main(Settings settings) {
         if (settings.jksFile != null && settings.jksPassword != null) {
             secure(settings.jksFile, settings.jksPassword, null, null);
             port(443);
@@ -106,12 +107,7 @@ class Server {
                     return r.toJSONString();
                 });
 
-                post("/search", (req, resp) -> {
-                    JSONObject cr = JSON.parseObject(req.body(), JSONObject.class);
-                    JSONObject r = new JSONObject();
-                    r.put("data", getSearchHtml(cr.getString("name")));
-                    return r.toJSONString();
-                });
+                get("/search", (req, resp) -> JSON.toJSONString(getSearchItems(JSON.parseObject(req.body()))));
             });
 
             post("/stat", (req, resp) -> {
@@ -132,16 +128,17 @@ class Server {
         get("/robots.txt", (req, resp) -> {
             resp.body("User-Agent: *\r\nDisallow: /cli\n");
             resp.header("Content-Type", "text/plain");
-            return resp;
+            return resp.body();
         });
 
         awaitInitialization();
     }
 
-    private String getSearchHtml(String key) {
-        HashMap<String, Object> o = new HashMap<>();
-        o.put("feed", collectEvents(key));
-        return jinja.render(jedis.get("page.feed"), o);
+    private List<JSONObject> getSearchItems(JSONObject o) {
+        List<JSONObject> items = new ArrayList<>();
+        for (String k : jedis.scan("0", new ScanParams().match("event." + o.getString("name").toLowerCase())).getResult())
+            items.add(JSON.parseObject(jedis.get(k)));
+        return items;
     }
 
     private String getEventHtml(String key) {
@@ -190,15 +187,6 @@ class Server {
         return events;
     }
 
-    private List<JSONObject> collectEvents(String partOf) {
-        List<JSONObject> f = new ArrayList<>();
-        for (JSONObject e : _collectSortedEvents()) {
-
-            if (e.getString("name").toLowerCase().contains(partOf.toLowerCase())) f.add(e);
-        }
-        return f;
-    }
-
     private String getPageHtml(String key) {
         HashMap<String, Object> objects = new HashMap<>();
         objects.put("title", key);
@@ -227,15 +215,4 @@ class Server {
         }
         return jinja.render(data, objects);
     }
-
-    /*
-    private String getCountryCode(String ip){
-        try{
-            InetAddress addr = InetAddress.getByName(ip);
-            return geoip.city(addr).getCountry().getIsoCode().toLowerCase();
-        } catch (IOException | GeoIp2Exception e){
-            return "en";
-        }
-    }
-    */
 }
