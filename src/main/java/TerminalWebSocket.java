@@ -143,7 +143,6 @@ public class TerminalWebSocket {
         } catch (IOException e) {
             return "";
         }
-
     }
 
     private Result cdDirectory(FileSystem fs, cd c) {
@@ -223,7 +222,7 @@ public class TerminalWebSocket {
     }
 
     private void _createFiles(FileSystem fs) throws IOException, NullPointerException {
-        for (JSONObject file : JSON.parseArray(jedis.get("fs.config"), JSONObject.class)) {
+        for (JSONObject file : JSON.parseObject(jedis.get("fs.config")).getJSONArray("files").toJavaList(JSONObject.class)) {
             Path path = fs.getPath(file.getString("path"));
             Files.createDirectories(path);
             Path f = path.resolve(file.getString("name"));
@@ -232,10 +231,7 @@ public class TerminalWebSocket {
     }
 
     private void _createRoot(FileSystem fs) throws IOException {
-        for (String p : new String[]{
-                "bin", "boot", "etc", "home", "lib", "lib32", "lib64", "media", "mnt", "opt", "proc", "root", "srv", "run",
-                "sys", "usr", "var"
-        }) {
+        for (String p : new String[]{"bin", "boot", "etc", "home", "lib", "lib32", "lib64", "media", "mnt", "opt", "proc", "root", "srv", "run", "sys", "usr", "var"}) {
             Files.createDirectories(fs.getPath("/" + p));
         }
     }
@@ -252,17 +248,13 @@ public class TerminalWebSocket {
     }
 
     private void _createHome(FileSystem fs) throws IOException {
-        for (String p : new String[]{
-                "Documents", "Downloads", "backup", ".ssh", "Pictures", "Videos", "Public"
-        }) {
+        for (String p : new String[]{"Documents", "Downloads", "backup", ".ssh", "Pictures", "Videos", "Public"}) {
             Files.createDirectories(fs.getPath("/home/trig0n/" + p));
         }
     }
 
     private void _createLogs(FileSystem fs) throws IOException {
-        for (String p : new String[]{
-                "apt", "dist-upgrade", "fsck", "ligthdm", "mongodb", "upstart"
-        }) {
+        for (String p : new String[]{"apt", "dist-upgrade", "fsck", "ligthdm", "mongodb", "upstart"}) {
             Files.createDirectories(fs.getPath("/var/" + p));
         }
     }
@@ -354,7 +346,7 @@ class Command {
 class ls extends Command {
     boolean all = false;
     boolean recursive = false;
-    String directory = null;
+    String directory;
 
     ls(Request request) {
         super(request);
