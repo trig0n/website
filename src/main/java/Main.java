@@ -1,17 +1,28 @@
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.hubspot.jinjava.Jinjava;
+import com.mongodb.BasicDBObject;
+import com.mongodb.MongoClient;
+import com.mongodb.MongoClientOptions;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.Indexes;
+import com.mongodb.client.model.Projections;
+import com.mongodb.client.model.Sorts;
+import org.bson.codecs.configuration.CodecRegistry;
+import org.bson.codecs.pojo.PojoCodecProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import redis.clients.jedis.Jedis;
-import redis.clients.jedis.ScanParams;
 import spark.Request;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
+import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
+import static com.mongodb.client.model.Filters.eq;
+import static com.mongodb.client.model.Filters.text;
+import static org.bson.codecs.configuration.CodecRegistries.fromProviders;
+import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
 import static spark.Spark.*;
 
 // todo fix js search onchange
@@ -50,23 +61,34 @@ class Settings {
 }
 
 class Server {
+    private static SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm");
+    private Date bootTime;
     private Jinjava jinja;
-    private Jedis jedis;
+    private MongoCollection<Event> events;
+    private MongoCollection<Page> pages;
+    private MongoCollection<Host> hosts;
+    private MongoCollection<CountStatistic> stats;
+    private MongoCollection<Template> templates;
     private Logger log;
-    private DateTimeFormatter DATE_FORMAT;
 
     Server() {
-        jedis = new Jedis("localhost");
         jinja = new Jinjava();
         log = LoggerFactory.getLogger(Main.class);
-        DATE_FORMAT = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+        bootTime = new Date();
         initDatabase();
     }
 
     private void initDatabase() {
-        if (jedis.get("stat.hits") == null) jedis.set("stat.hits", Integer.toString(0));
-        if (jedis.get("stat.scans") == null) jedis.set("stat.scans", Integer.toString(0));
-        jedis.set("stat.bootTime", LocalDateTime.now().format(DATE_FORMAT));
+        CodecRegistry pojoCodecRegistry = fromRegistries(MongoClient.getDefaultCodecRegistry(),
+                fromProviders(PojoCodecProvider.builder().automatic(true).build()));
+        MongoClient client = new MongoClient("localhost", MongoClientOptions.builder().codecRegistry(pojoCodecRegistry).build());
+        MongoDatabase db = client.getDatabase("eberlein");
+        events = db.getCollection("events", Event.class);
+        pages = db.getCollection("page", Page.class);
+        hosts = db.getCollection("host", Host.class);
+        templates = db.getCollection("template", Template.class);
+        stats = db.getCollection("stat", CountStatistic.class);
+        stats.createIndex(Indexes.ascending("count"));
     }
 
     void main(Settings settings) {
@@ -85,12 +107,12 @@ class Server {
 
         get("/cli", (req, resp) -> {
             Map<String, Object> objs = new HashMap<>();
-            return jinja.render(jedis.get("template.cli"), objs);
+            return jinja.render(templates.find(eq("name", "cli")).first().data, objs);
         });
 
         get("/", (req, resp) -> {
             Map<String, Object> objs = new HashMap<>();
-            return jinja.render(jedis.get("template.gui"), objs);
+            return jinja.render(templates.find(eq("name", "gui")).first().data, objs);
         });
 
         path("/api", () -> {
@@ -102,20 +124,19 @@ class Server {
 
                 post("/page", (req, resp) -> {
                     JSONObject cr = JSON.parseObject(req.body(), JSONObject.class);
+                    System.out.println(cr.toJSONString());
                     JSONObject r = new JSONObject();
                     r.put("data", getPageHtml(cr.getString("name")));
                     return r.toJSONString();
                 });
 
-                get("/search", (req, resp) -> JSON.toJSONString(getSearchItems(JSON.parseObject(req.body()))));
+                get("/search", (req, resp) -> JSON.toJSONString(getSearchItems(JSON.parseObject(req.body(), ContentRequest.class).data)));
             });
 
             post("/stat", (req, resp) -> {
                 System.out.println(req.ip());
-                JSONObject cr = JSON.parseObject(req.body(), JSONObject.class);
-                JSONObject r = new JSONObject();
-                r.put(cr.getString("string"), jedis.get("stat." + cr.getString("name")));
-                return r.toJSONString();
+                ContentRequest cr = JSON.parseObject(req.body(), ContentRequest.class);
+                return JSON.toJSONString(new ContentResponse(cr.name, Integer.toString(stats.find(eq("name", cr.name)).first().value)));
             });
 
             get("/status", (req, resp) -> {
@@ -134,25 +155,23 @@ class Server {
         awaitInitialization();
     }
 
-    private List<JSONObject> getSearchItems(JSONObject o) {
-        System.out.println(o.getString("name"));
-        List<JSONObject> items = new ArrayList<>();
-        for (String k : jedis.scan("0", new ScanParams().match("event." + o.getString("name").toLowerCase())).getResult())
-            items.add(JSON.parseObject(jedis.get(k)));
-        System.out.println(items.size());
+    private List<Event> getSearchItems(String query) {
+        List<Event> items = new ArrayList<>();
+        for (Event e : events.find(text(query)).projection(Projections.metaTextScore("score")).sort(Sorts.metaTextScore("score")))
+            items.add(e);
         return items;
     }
 
     private String getEventHtml(String key) {
-        return JSON.parseObject(jedis.get("event." + key)).getString("html");
+        return events.find(eq("name", key)).first().html;
     }
 
     private void checkRequest(Request r) {
-        if (scanRequest(r)) jedis.incr("stat.scans");
-        else jedis.incr("stat.hits");
-        JSONObject old = JSON.parseObject(jedis.get("ip." + r.ip()), JSONObject.class);
-        old = updatePathCounts(r, old); // todo update more
-        jedis.set("ip." + r.ip(), JSON.toJSONString(old));
+        if (scanRequest(r)) stats.updateOne(eq("name", "scans"), new BasicDBObject("$inc", 1));
+        else stats.updateOne(eq("name", "scans"), new BasicDBObject("$inc", 1));
+        Host h = hosts.find(eq("ip", r.ip())).first();
+        h.incrementCount(r.pathInfo());
+        hosts.replaceOne(eq("ip", r.ip()), h);
     }
 
     private JSONObject updatePathCounts(Request req, JSONObject old) {
@@ -172,21 +191,7 @@ class Server {
 
     private boolean scanRequest(Request r) {
         return r.url().contains("wp-admin") || r.url().equals("/robots.txt");
-        // lookup table of paths and parameters
-    }
-
-    private List<JSONObject> _collectSortedEvents() {
-        List<JSONObject> events = new ArrayList<>();
-        for (String key : jedis.scan("0", new ScanParams().match("event.*")).getResult()) {
-            events.add(JSON.parseObject(jedis.get(key)));
-        }
-        Collections.sort(events, new Comparator<JSONObject>() {
-            @Override
-            public int compare(JSONObject t0, JSONObject t1) {
-                return t1.getInteger("id").compareTo(t0.getInteger("id"));
-            }
-        });
-        return events;
+        // todo lookup table of paths and parameters
     }
 
     private String getPageHtml(String key) {
@@ -195,22 +200,21 @@ class Server {
         String data;
         switch (key) {
             case "about":
-                data = jedis.get("page.about");
+                data = pages.find(eq("name", "about")).first().data;
                 break;
             case "contact":
-                data = jedis.get("page.contact");
+                data = pages.find(eq("name", "contact")).first().data;
                 break;
             case "feed":
-                data = jedis.get("page.feed");
-                objects.put("feed", _collectSortedEvents());
+                data = pages.find(eq("name", "feed")).first().data;
+                objects.put("feed", events.find(eq("name", key)).sort(Sorts.ascending("id")));
                 break;
             case "home":
-                data = jedis.get("page.home");
-                objects.put("hits", jedis.get("stat.hits"));
-                objects.put("scans", jedis.get("stat.scans"));
-                String bootTime = jedis.get("stat.bootTime");
-                objects.put("bootTime", bootTime);
-                objects.put("runTime", LocalDateTime.parse(bootTime, DATE_FORMAT).until(LocalDateTime.now(), ChronoUnit.HOURS));
+                data = pages.find(eq("name", "home")).first().data;
+                objects.put("hits", stats.find(eq("name", "hits")));
+                objects.put("scans", stats.find(eq("name", "scans")));
+                objects.put("bootTime", dateFormat.format(bootTime.getTime()));
+                objects.put("runTime", TimeUnit.MILLISECONDS.toHours(new Date().getTime() - bootTime.getTime()));
                 break;
             default:
                 data = "<h4>404</h4><br>" + key + " not found.";

@@ -3,7 +3,7 @@ let cookie = {};
 function setActive(name) {
     setCookiePage(name);
     setSideNavButtonActive(name);
-    request("/api/content/page", "POST", JSON.stringify({"name": name}), gotContent);
+    request("/api/content/page", "POST", JSON.stringify({"name": name}), setContent);
 }
 
 function setSideNavButtonActive(name) {
@@ -38,15 +38,9 @@ function writeCookie(c) {
     document.cookie = v;
 }
 
-function gotContent(data) {
-    data = JSON.parse(data);
+function setContent(data) {
     document.getElementById("searchResults").innerHTML = "";
-    document.getElementById("content").innerHTML = data["data"];
-}
-
-function overwriteContent(data) {
-    document.getElementById("searchResults").innerHTML = "";
-    document.getElementById("content").innerHTML = data;
+    document.getElementById("content").innerHTML = JSON.parse(data)["data"];
 }
 
 function request(url, method, data, callback) {
@@ -60,13 +54,16 @@ function request(url, method, data, callback) {
 }
 
 function searchResults(data) {
+    alert(data);
     data = JSON.parse(data);
-    if (data !== undefined) overwriteContent(data["data"]);
-    else document.getElementById("searchResults").innerHTML = '<div class="notification is-warning"><button class="delete">sorry. could not find anything</button>'
+    if (data !== undefined) {
+        setContent(data["data"]);
+    }
+    else document.getElementById("searchResults").innerHTML = '<div class="notification is-warning"><button class="delete">sorry. could not find anything</button>';
 }
 
 function search(data) {
-    request("/api/content/search", "POST", JSON.stringify({"name": data}), searchResults)
+    request("/api/content/search", "POST", JSON.stringify({"name": data}), searchResults);
 }
 
 let p = null;

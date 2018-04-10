@@ -5,6 +5,9 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.io.Resources;
 import com.google.common.jimfs.Configuration;
 import com.google.common.jimfs.Jimfs;
+import com.mongodb.MongoClient;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketClose;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
@@ -12,7 +15,6 @@ import org.eclipse.jetty.websocket.api.annotations.OnWebSocketMessage;
 import org.eclipse.jetty.websocket.api.annotations.WebSocket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import redis.clients.jedis.Jedis;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -21,6 +23,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Consumer;
+
+import static com.mongodb.client.model.Filters.eq;
 
 @WebSocket
 public class TerminalWebSocket {
@@ -31,21 +35,30 @@ public class TerminalWebSocket {
     private Map<Session, FileSystem> sessions;
     private Map<Session, Date> sessionTimes;
     private List<Session> queue;
-    private Jedis jedis;
+    private MongoCollection<Template> templates;
+    private MongoCollection<LongStatistic> stats;
+    private MongoCollection<FileSystemStructure> fs;
 
     public TerminalWebSocket() {
-        this.jedis = new Jedis();
         log = LoggerFactory.getLogger(TerminalWebSocket.class);
         sessions = new HashMap<>();
         sessionTimes = new HashMap<>();
         queue = new ArrayList<>();
+        initDatabase();
+    }
+
+    private void initDatabase() {
+        MongoDatabase db = new MongoClient().getDatabase("eberlein");
+        templates = db.getCollection("template", Template.class);
+        stats = db.getCollection("terminal_stats", LongStatistic.class);
+        fs = db.getCollection("fs", FileSystemStructure.class);
     }
 
     @OnWebSocketConnect
     public void connected(Session session) {
         if (sessions.size() == 1024) send(session, new Result(generateWaitResponse(session), "__wait__"));
         else {
-            if (queue.contains(session)) queue.remove(session);
+            queue.remove(session);
             sessions.put(session, createLegitFs(Jimfs.newFileSystem(Configuration.unix())));
             sessionTimes.put(session, new Date());
             send(session, new Result(session.getRemoteAddress().getAddress().toString().replace("/", ""), "__init__"));
@@ -54,7 +67,7 @@ public class TerminalWebSocket {
 
     @OnWebSocketClose
     public void closed(Session session, int statusCode, String reason) {
-        if (queue.contains(session)) queue.remove(session);
+        queue.remove(session);
         updateAvgTime(session);
         sessionTimes.remove(session);
         // todo store fs for reloading even after reboot
@@ -87,19 +100,14 @@ public class TerminalWebSocket {
     }
 
     private void updateAvgTime(Session s) {
-        JSONObject o = JSON.parseObject(jedis.get("termsock.avg.time"), JSONObject.class);
-        long sec = new Date().getTime() - sessionTimes.get(s).getTime();
-        JSONObject n = new JSONObject();
-        n.put("time", (o.getInteger("time") + sec) / 2);
-        n.put("count", o.getInteger("count") + 1);
-        jedis.set("termsock.avg.time", JSON.toJSONString(n));
+        stats.replaceOne(eq("name", "avg"), new LongStatistic("avg", new Date().getTime() - sessionTimes.get(s).getTime()));
     }
 
     private String generateWaitResponse(Session session) {
         queue.add(session);
         JSONObject o = new JSONObject();
         o.put("position", queue.indexOf(session));
-        o.put("time", jedis.get("termsock.avg.time"));
+        o.put("time", stats.find(eq("name", "avg")).first().value);
         return JSON.toJSONString(o);
     }
 
@@ -222,11 +230,11 @@ public class TerminalWebSocket {
     }
 
     private void _createFiles(FileSystem fs) throws IOException, NullPointerException {
-        for (JSONObject file : JSON.parseObject(jedis.get("fs.config")).getJSONArray("files").toJavaList(JSONObject.class)) {
-            Path path = fs.getPath(file.getString("path"));
+        for (File f : this.fs.find().first().files) {
+            Path path = fs.getPath(f.path);
             Files.createDirectories(path);
-            Path f = path.resolve(file.getString("name"));
-            Files.write(f, ImmutableList.of(file.getString("data")), StandardCharsets.UTF_8);
+            Path p = path.resolve(f.path);
+            Files.write(p, ImmutableList.of(f.data), StandardCharsets.UTF_8);
         }
     }
 
