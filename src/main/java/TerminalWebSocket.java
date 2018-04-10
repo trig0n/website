@@ -35,7 +35,7 @@ public class TerminalWebSocket {
     private Map<Session, FileSystem> sessions;
     private Map<Session, Date> sessionTimes;
     private List<Session> queue;
-    private MongoCollection<Template> templates;
+    private MongoCollection<DataEntity> templates;
     private MongoCollection<LongStatistic> stats;
     private MongoCollection<FileSystemStructure> fs;
 
@@ -49,7 +49,7 @@ public class TerminalWebSocket {
 
     private void initDatabase() {
         MongoDatabase db = new MongoClient().getDatabase("eberlein");
-        templates = db.getCollection("template", Template.class);
+        templates = db.getCollection("template", DataEntity.class);
         stats = db.getCollection("terminal_stats", LongStatistic.class);
         fs = db.getCollection("fs", FileSystemStructure.class);
     }
@@ -107,7 +107,7 @@ public class TerminalWebSocket {
         queue.add(session);
         JSONObject o = new JSONObject();
         o.put("position", queue.indexOf(session));
-        o.put("time", stats.find(eq("name", "avg")).first().value);
+        o.put("time", stats.find(eq("name", "avg")).first().getValue());
         return JSON.toJSONString(o);
     }
 
@@ -230,11 +230,11 @@ public class TerminalWebSocket {
     }
 
     private void _createFiles(FileSystem fs) throws IOException, NullPointerException {
-        for (File f : this.fs.find().first().files) {
-            Path path = fs.getPath(f.path);
+        for (File f : this.fs.find().first().getFiles()) {
+            Path path = fs.getPath(f.getPath());
             Files.createDirectories(path);
-            Path p = path.resolve(f.path);
-            Files.write(p, ImmutableList.of(f.data), StandardCharsets.UTF_8);
+            Path p = path.resolve(f.getPath());
+            Files.write(p, ImmutableList.of(f.getData()), StandardCharsets.UTF_8);
         }
     }
 

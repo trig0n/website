@@ -65,10 +65,10 @@ class Server {
     private Date bootTime;
     private Jinjava jinja;
     private MongoCollection<Event> events;
-    private MongoCollection<Page> pages;
+    private MongoCollection<DataEntity> pages;
     private MongoCollection<Host> hosts;
     private MongoCollection<CountStatistic> stats;
-    private MongoCollection<Template> templates;
+    private MongoCollection<DataEntity> templates;
     private Logger log;
 
     Server() {
@@ -84,11 +84,14 @@ class Server {
         MongoClient client = new MongoClient("localhost", MongoClientOptions.builder().codecRegistry(pojoCodecRegistry).build());
         MongoDatabase db = client.getDatabase("eberlein");
         events = db.getCollection("events", Event.class);
-        pages = db.getCollection("page", Page.class);
+        pages = db.getCollection("page", DataEntity.class);
         hosts = db.getCollection("host", Host.class);
-        templates = db.getCollection("template", Template.class);
+        templates = db.getCollection("template", DataEntity.class);
         stats = db.getCollection("stat", CountStatistic.class);
         stats.createIndex(Indexes.ascending("count"));
+
+        if (stats.find(eq("name", "hits")).first() == null) stats.insertOne(new CountStatistic("hits", 0));
+        if (stats.find(eq("name", "scans")).first() == null) stats.insertOne(new CountStatistic("scans", 0));
     }
 
     void main(Settings settings) {
@@ -107,12 +110,12 @@ class Server {
 
         get("/cli", (req, resp) -> {
             Map<String, Object> objs = new HashMap<>();
-            return jinja.render(templates.find(eq("name", "cli")).first().data, objs);
+            return jinja.render(templates.find(eq("name", "cli")).first().getData(), objs);
         });
 
         get("/", (req, resp) -> {
             Map<String, Object> objs = new HashMap<>();
-            return jinja.render(templates.find(eq("name", "gui")).first().data, objs);
+            return jinja.render(templates.find(eq("name", "gui")).first().getData(), objs);
         });
 
         path("/api", () -> {
@@ -136,7 +139,7 @@ class Server {
             post("/stat", (req, resp) -> {
                 System.out.println(req.ip());
                 ContentRequest cr = JSON.parseObject(req.body(), ContentRequest.class);
-                return JSON.toJSONString(new ContentResponse(cr.name, Integer.toString(stats.find(eq("name", cr.name)).first().value)));
+                return JSON.toJSONString(new ContentResponse(cr.name, Integer.toString(stats.find(eq("name", cr.name)).first().getValue())));
             });
 
             get("/status", (req, resp) -> {
@@ -163,30 +166,24 @@ class Server {
     }
 
     private String getEventHtml(String key) {
-        return events.find(eq("name", key)).first().html;
+        return events.find(eq("name", key)).first().getHtml();
     }
 
     private void checkRequest(Request r) {
         if (scanRequest(r)) stats.updateOne(eq("name", "scans"), new BasicDBObject("$inc", 1));
-        else stats.updateOne(eq("name", "scans"), new BasicDBObject("$inc", 1));
-        Host h = hosts.find(eq("ip", r.ip())).first();
-        h.incrementCount(r.pathInfo());
-        hosts.replaceOne(eq("ip", r.ip()), h);
-    }
-
-    private JSONObject updatePathCounts(Request req, JSONObject old) {
-        JSONObject pathCounts;
-        if (old == null) old = new JSONObject();
-        if (old.containsKey("count")) {
-            pathCounts = old.getJSONObject("count");
-            if (pathCounts.containsKey(req.pathInfo()))
-                pathCounts.put(req.pathInfo(), pathCounts.getInteger(req.pathInfo()) + 1);
-        } else {
-            pathCounts = new JSONObject();
-            pathCounts.put(req.pathInfo(), 1);
+        else {
+            CountStatistic c = stats.find(eq("name", "hits")).first();
+            if (c == null) c = new CountStatistic("hits", 1);
+            else c.increment(1);
+            stats.replaceOne(eq("name", "hits"), c);
         }
-        old.put("count", pathCounts);
-        return old;
+        Host h = hosts.find(eq("ip", r.ip())).first();
+        if (h == null) {
+            List<CountStatistic> c = new ArrayList<>();
+            c.add(new CountStatistic(r.pathInfo(), 1));
+            h = new Host(r.ip(), c);
+        } else h.incrementCount(r.pathInfo());
+        hosts.replaceOne(eq("ip", r.ip()), h);
     }
 
     private boolean scanRequest(Request r) {
@@ -200,19 +197,19 @@ class Server {
         String data;
         switch (key) {
             case "about":
-                data = pages.find(eq("name", "about")).first().data;
+                data = pages.find(eq("name", "about")).first().getData();
                 break;
             case "contact":
-                data = pages.find(eq("name", "contact")).first().data;
+                data = pages.find(eq("name", "contact")).first().getData();
                 break;
             case "feed":
-                data = pages.find(eq("name", "feed")).first().data;
+                data = pages.find(eq("name", "feed")).first().getData();
                 objects.put("feed", events.find(eq("name", key)).sort(Sorts.ascending("id")));
                 break;
             case "home":
-                data = pages.find(eq("name", "home")).first().data;
-                objects.put("hits", stats.find(eq("name", "hits")));
-                objects.put("scans", stats.find(eq("name", "scans")));
+                data = pages.find(eq("name", "home")).first().getData();
+                objects.put("hits", stats.find(eq("name", "hits")).first().getValue());
+                objects.put("scans", stats.find(eq("name", "scans")).first().getValue());
                 objects.put("bootTime", dateFormat.format(bootTime.getTime()));
                 objects.put("runTime", TimeUnit.MILLISECONDS.toHours(new Date().getTime() - bootTime.getTime()));
                 break;
