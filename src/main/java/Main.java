@@ -83,7 +83,7 @@ class Server {
                 fromProviders(PojoCodecProvider.builder().automatic(true).build()));
         MongoClient client = new MongoClient("localhost", MongoClientOptions.builder().codecRegistry(pojoCodecRegistry).build());
         MongoDatabase db = client.getDatabase("eberlein");
-        events = db.getCollection("events", Event.class);
+        events = db.getCollection("event", Event.class);
         pages = db.getCollection("page", DataEntity.class);
         hosts = db.getCollection("host", Host.class);
         templates = db.getCollection("template", DataEntity.class);
@@ -204,7 +204,7 @@ class Server {
                 break;
             case "feed":
                 data = pages.find(eq("name", "feed")).first().getData();
-                objects.put("feed", events.find(eq("name", key)).sort(Sorts.ascending("id")));
+                objects.put("feed", events.find().sort(Sorts.descending("id")));
                 break;
             case "home":
                 data = pages.find(eq("name", "home")).first().getData();
