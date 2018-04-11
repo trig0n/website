@@ -1,5 +1,4 @@
 import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
 import com.hubspot.jinjava.Jinjava;
 import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
@@ -121,25 +120,23 @@ class Server {
         path("/api", () -> {
             path("/content", () -> {
                 post("/event", (req, resp) -> {
-                    JSONObject cr = JSON.parseObject(req.body(), JSONObject.class);
-                    return getEventHtml(cr.getString("name"));
+                    ContentRequest cr = JSON.parseObject(req.body(), ContentRequest.class);
+                    return JSON.toJSONString(new ContentResponse(cr.getName(), getEventHtml(cr.getName())));
                 });
 
                 post("/page", (req, resp) -> {
-                    JSONObject cr = JSON.parseObject(req.body(), JSONObject.class);
-                    System.out.println(cr.toJSONString());
-                    JSONObject r = new JSONObject();
-                    r.put("data", getPageHtml(cr.getString("name")));
-                    return r.toJSONString();
+                    System.out.println(req.body());
+                    ContentRequest cr = JSON.parseObject(req.body(), ContentRequest.class);
+                    return JSON.toJSONString(new ContentResponse(cr.getName(), getPageHtml(cr.getName())));
                 });
 
-                get("/search", (req, resp) -> JSON.toJSONString(getSearchItems(JSON.parseObject(req.body(), ContentRequest.class).data)));
+                get("/search", (req, resp) -> JSON.toJSONString(getSearchItems(JSON.parseObject(req.body(), ContentRequest.class).getData())));
             });
 
             post("/stat", (req, resp) -> {
                 System.out.println(req.ip());
                 ContentRequest cr = JSON.parseObject(req.body(), ContentRequest.class);
-                return JSON.toJSONString(new ContentResponse(cr.name, Integer.toString(stats.find(eq("name", cr.name)).first().getValue())));
+                return JSON.toJSONString(new ContentResponse(cr.getName(), Integer.toString(stats.find(eq("name", cr.getName())).first().getValue())));
             });
 
             get("/status", (req, resp) -> {
