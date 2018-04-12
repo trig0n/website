@@ -3,10 +3,10 @@ import com.hubspot.jinjava.Jinjava;
 import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientOptions;
+import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Indexes;
-import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Sorts;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.codecs.pojo.PojoCodecProvider;
@@ -17,9 +17,10 @@ import spark.Request;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 import static com.mongodb.client.model.Filters.eq;
-import static com.mongodb.client.model.Filters.text;
+import static com.mongodb.client.model.Filters.regex;
 import static org.bson.codecs.configuration.CodecRegistries.fromProviders;
 import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
 import static spark.Spark.*;
@@ -125,12 +126,14 @@ class Server {
                 });
 
                 post("/page", (req, resp) -> {
-                    System.out.println(req.body());
                     ContentRequest cr = JSON.parseObject(req.body(), ContentRequest.class);
                     return JSON.toJSONString(new ContentResponse(cr.getName(), getPageHtml(cr.getName())));
                 });
 
-                get("/search", (req, resp) -> JSON.toJSONString(getSearchItems(JSON.parseObject(req.body(), ContentRequest.class).getData())));
+                post("/search", (req, resp) -> {
+                    ContentRequest cr = JSON.parseObject(req.body(), ContentRequest.class);
+                    return getSearchItems(cr.getName()); // todo fix json encoding escaping everything too much
+                });
             });
 
             post("/stat", (req, resp) -> {
@@ -155,11 +158,15 @@ class Server {
         awaitInitialization();
     }
 
-    private List<Event> getSearchItems(String query) {
-        List<Event> items = new ArrayList<>();
-        for (Event e : events.find(text(query)).projection(Projections.metaTextScore("score")).sort(Sorts.metaTextScore("score")))
-            items.add(e);
-        return items;
+    private String getSearchItems(String query) {
+        HashMap<String, Object> o = new HashMap<>();
+        FindIterable<Event> items = events.find(regex("name", "(?i).*" + Pattern.quote(query) + ".*")).sort(Sorts.descending("id"));
+        if (items.first() != null) o.put("feed", items);
+        else o.put("searchNone", true);
+        String tmpl = pages.find(eq("name", "feed")).first().getData();
+        String data = jinja.render(tmpl, o);
+        System.out.println(data);
+        return data;
     }
 
     private String getEventHtml(String key) {

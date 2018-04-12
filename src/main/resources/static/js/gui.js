@@ -54,12 +54,7 @@ function request(url, method, data, callback) {
 }
 
 function searchResults(data) {
-    alert(data);
-    data = JSON.parse(data);
-    if (data !== undefined) {
-        setContent(data["data"]);
-    }
-    else document.getElementById("searchResults").innerHTML = '<div class="notification is-warning"><button class="delete">sorry. could not find anything</button>';
+    document.getElementById("searchResults").innerHTML = data;
 }
 
 function search(data) {
