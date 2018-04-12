@@ -6,8 +6,11 @@ import com.google.common.io.Resources;
 import com.google.common.jimfs.Configuration;
 import com.google.common.jimfs.Jimfs;
 import com.mongodb.MongoClient;
+import com.mongodb.MongoClientOptions;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import org.bson.codecs.configuration.CodecRegistry;
+import org.bson.codecs.pojo.PojoCodecProvider;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketClose;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
@@ -25,6 +28,8 @@ import java.util.*;
 import java.util.function.Consumer;
 
 import static com.mongodb.client.model.Filters.eq;
+import static org.bson.codecs.configuration.CodecRegistries.fromProviders;
+import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
 
 @WebSocket
 public class TerminalWebSocket {
@@ -48,7 +53,10 @@ public class TerminalWebSocket {
     }
 
     private void initDatabase() {
-        MongoDatabase db = new MongoClient().getDatabase("eberlein");
+        CodecRegistry pojoCodecRegistry = fromRegistries(MongoClient.getDefaultCodecRegistry(),
+                fromProviders(PojoCodecProvider.builder().automatic(true).build()));
+        MongoClient client = new MongoClient("localhost", MongoClientOptions.builder().codecRegistry(pojoCodecRegistry).build());
+        MongoDatabase db = client.getDatabase("eberlein");
         templates = db.getCollection("template", DataEntity.class);
         stats = db.getCollection("terminal_stats", LongStatistic.class);
         fs = db.getCollection("fs", FileSystemStructure.class);
@@ -222,7 +230,7 @@ public class TerminalWebSocket {
             _createHome(fs);
             _createLogs(fs);
             _createEtc(fs);
-            _createFiles(fs);
+            // _createFiles(fs); // todo insert files and pull / decode
         } catch (IOException | NullPointerException e) {
             e.printStackTrace();
         }
@@ -230,7 +238,7 @@ public class TerminalWebSocket {
     }
 
     private void _createFiles(FileSystem fs) throws IOException, NullPointerException {
-        for (File f : this.fs.find().first().getFiles()) {
+        for (FileStructure f : this.fs.find().first().getFiles()) {
             Path path = fs.getPath(f.getPath());
             Files.createDirectories(path);
             Path p = path.resolve(f.getPath());

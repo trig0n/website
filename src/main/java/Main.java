@@ -163,10 +163,7 @@ class Server {
         FindIterable<Event> items = events.find(regex("name", "(?i).*" + Pattern.quote(query) + ".*")).sort(Sorts.descending("id"));
         if (items.first() != null) o.put("feed", items);
         else o.put("searchNone", true);
-        String tmpl = pages.find(eq("name", "feed")).first().getData();
-        String data = jinja.render(tmpl, o);
-        System.out.println(data);
-        return data;
+        return jinja.render(pages.find(eq("name", "feed")).first().getData(), o);
     }
 
     private String getEventHtml(String key) {
