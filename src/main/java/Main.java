@@ -104,14 +104,16 @@ class Server {
         }
         staticFiles.location("static/");
 
-        webSocket("/termsock", TerminalWebSocket.class);
+        // webSocket("/termsock", TerminalWebSocket.class); // todo fix
 
         before("/*", (req, resp) -> checkRequest(req));
 
+        /*
         get("/cli", (req, resp) -> {
             Map<String, Object> objs = new HashMap<>();
             return jinja.render(templates.find(eq("name", "cli")).first().getData(), objs);
         });
+        */
 
         get("/", (req, resp) -> {
             Map<String, Object> objs = new HashMap<>();
