@@ -102,6 +102,7 @@ class Server {
         } else {
             port(settings.port);
         }
+
         staticFiles.location("static/");
 
         // webSocket("/termsock", TerminalWebSocket.class); // todo fix
