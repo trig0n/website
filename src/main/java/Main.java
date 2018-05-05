@@ -36,7 +36,7 @@ public class Main {
 }
 
 class Settings {
-    int port;
+    int port = 80;
     String jksFile;
     String jksPassword;
 
@@ -97,8 +97,8 @@ class Server {
     void main(Settings settings) {
         if (settings.jksFile != null && settings.jksPassword != null) {
             secure(settings.jksFile, settings.jksPassword, null, null);
-            port(443);
-            log.info("using " + settings.jksFile + "for ssl encryption over port" + settings.port);
+            port(settings.port);
+            log.info("using " + settings.jksFile + " for ssl encryption over port" + settings.port);
         } else {
             port(settings.port);
         }
