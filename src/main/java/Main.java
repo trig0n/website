@@ -15,7 +15,10 @@ import org.slf4j.LoggerFactory;
 import spark.Request;
 
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -61,7 +64,6 @@ class Settings {
 }
 
 class Server {
-    private static SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm");
     private Date bootTime;
     private Jinjava jinja;
     private MongoCollection<Event> events;
@@ -70,6 +72,16 @@ class Server {
     private MongoCollection<CountStatistic> stats;
     private MongoCollection<DataEntity> templates;
     private Logger log;
+
+    private static final SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm");
+    private static final String[] allowed_urls = {
+            "/",
+            "/api/content/event",
+            "/api/content/page",
+            "/api/content/search",
+            "/api/stat",
+            "/api/status"
+    };
 
     Server() {
         jinja = new Jinjava();
@@ -174,25 +186,18 @@ class Server {
     }
 
     private void checkRequest(Request r) {
-        if (scanRequest(r)) stats.updateOne(eq("name", "scans"), new BasicDBObject("$inc", 1));
-        else {
-            CountStatistic c = stats.find(eq("name", "hits")).first();
-            if (c == null) c = new CountStatistic("hits", 1);
-            else c.increment(1);
-            stats.replaceOne(eq("name", "hits"), c);
-        }
+        if (!Arrays.asList(allowed_urls).contains(r.pathInfo()))
+            stats.updateOne(eq("name", "scans"), new BasicDBObject("$inc", 1));
+        else stats.updateOne(eq("name", "hits"), new BasicDBObject("$inc", 1));
+
         Host h = hosts.find(eq("ip", r.ip())).first();
         if (h == null) {
-            List<CountStatistic> c = new ArrayList<>();
-            c.add(new CountStatistic(r.pathInfo(), 1));
-            h = new Host(r.ip(), c);
+            h = new Host();
+            h.setIp(r.ip());
+            h.addCount(new CountStatistic(r.pathInfo(), 1));
         } else h.incrementCount(r.pathInfo());
+        h.addUseragent(r.userAgent());
         hosts.replaceOne(eq("ip", r.ip()), h);
-    }
-
-    private boolean scanRequest(Request r) {
-        return r.url().contains("wp-admin") || r.url().equals("/robots.txt");
-        // todo lookup table of paths and parameters
     }
 
     private String getPageHtml(String key) {
