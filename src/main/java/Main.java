@@ -1,6 +1,5 @@
 import com.alibaba.fastjson.JSON;
 import com.hubspot.jinjava.Jinjava;
-import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientOptions;
 import com.mongodb.client.FindIterable;
@@ -8,6 +7,7 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Indexes;
 import com.mongodb.client.model.Sorts;
+import com.mongodb.client.model.Updates;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.codecs.pojo.PojoCodecProvider;
 import org.slf4j.Logger;
@@ -178,8 +178,8 @@ class Server {
 
     private void checkRequest(Request r) {
         if (!Arrays.asList(allowed_urls).contains(r.pathInfo()))
-            stats.updateOne(eq("name", "scans"), new BasicDBObject("$inc", 1));
-        else stats.updateOne(eq("name", "hits"), new BasicDBObject("$inc", 1));
+            stats.updateOne(eq("name", "scans"), Updates.inc("value", 1));
+        else stats.updateOne(eq("name", "hits"), Updates.inc("value", 1));
 
         Host h = hosts.find(eq("ip", r.ip())).first();
         if (h == null) {
