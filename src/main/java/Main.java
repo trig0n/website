@@ -60,6 +60,8 @@ class Settings {
         System.out.println("usage: java -jar website.jar [arguments]");
         System.out.println("-h\t--help\tthis");
         System.out.println("-p\t--port\tport");
+        System.out.println("--mongodb-username");
+        System.out.println("--mongodb-password");
         System.out.println("--jks-file\tkeystore file");
         System.out.println("--jks-pass\tkeystore password");
         System.out.println("exiting..");
