@@ -38,16 +38,16 @@ public class Main {
 }
 
 class Settings {
-    int port = 80;
     String jksFile;
     String jksPassword;
 
+    int mongodbPort = 27017;
     String mongodbUsername;
     String mongodbPassword;
 
     Settings(String[] args) {
         for (int i = 0; i < args.length; i++) {
-            if (args[i].equals("-p") || args[i].equals("--port")) this.port = new Integer(args[i + 1]);
+            if (args[i].equals("--mongodb-port")) this.mongodbPort = new Integer(args[i + 1]);
             if (args[i].equals("--mongodb-username")) mongodbUsername = args[i + 1];
             if (args[i].equals("--mongodb-password")) mongodbPassword = args[i + 1];
             if (args[i].equals("--jks-pass")) this.jksPassword = args[i + 1];
@@ -102,7 +102,7 @@ class Server {
     private void initDatabase() {
         CodecRegistry pojoCodecRegistry = fromRegistries(com.mongodb.MongoClient.getDefaultCodecRegistry(),
                 fromProviders(PojoCodecProvider.builder().automatic(true).build()));
-        MongoClient client = MongoClients.create(MongoClientSettings.builder().codecRegistry(pojoCodecRegistry).credential(MongoCredential.createCredential(settings.mongodbUsername, "eberlein", settings.mongodbPassword.toCharArray())).applyToClusterSettings(builder -> builder.hosts(Arrays.asList(new ServerAddress("127.0.0.1", 27017)))).build());
+        MongoClient client = MongoClients.create(MongoClientSettings.builder().codecRegistry(pojoCodecRegistry).credential(MongoCredential.createCredential(settings.mongodbUsername, "eberlein", settings.mongodbPassword.toCharArray())).applyToClusterSettings(builder -> builder.hosts(Arrays.asList(new ServerAddress("127.0.0.1", settings.mongodbPort)))).build());
         MongoDatabase db = client.getDatabase("eberlein");
         events = db.getCollection("event", Event.class);
         pages = db.getCollection("page", DataEntity.class);
@@ -118,10 +118,10 @@ class Server {
     void main() {
         if (settings.jksFile != null && settings.jksPassword != null) {
             secure(settings.jksFile, settings.jksPassword, null, null);
-            port(settings.port);
-            log.info("using " + settings.jksFile + " for ssl encryption over port" + settings.port);
+            port(443);
+            log.info("using " + settings.jksFile + " for ssl encryption over port 443");
         } else {
-            port(settings.port);
+            port(80);
         }
 
         staticFiles.location("static/");
