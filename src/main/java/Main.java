@@ -1,10 +1,9 @@
 import com.alibaba.fastjson.JSON;
 import com.hubspot.jinjava.Jinjava;
-import com.mongodb.MongoClient;
-import com.mongodb.MongoClientOptions;
-import com.mongodb.client.FindIterable;
-import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoDatabase;
+import com.mongodb.MongoClientSettings;
+import com.mongodb.MongoCredential;
+import com.mongodb.ServerAddress;
+import com.mongodb.client.*;
 import com.mongodb.client.model.Indexes;
 import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.Updates;
@@ -33,8 +32,8 @@ import static spark.Spark.*;
 
 public class Main {
     public static void main(String[] args) {
-        Server s = new Server();
-        s.main(new Settings(args));
+        Server s = new Server(new Settings(args));
+        s.main();
     }
 }
 
@@ -43,9 +42,14 @@ class Settings {
     String jksFile;
     String jksPassword;
 
+    String mongodbUsername;
+    String mongodbPassword;
+
     Settings(String[] args) {
         for (int i = 0; i < args.length; i++) {
             if (args[i].equals("-p") || args[i].equals("--port")) this.port = new Integer(args[i + 1]);
+            if (args[i].equals("--mongodb-username")) mongodbUsername = args[i + 1];
+            if (args[i].equals("--mongodb-password")) mongodbPassword = args[i + 1];
             if (args[i].equals("--jks-pass")) this.jksPassword = args[i + 1];
             if (args[i].equals("--jks-file")) this.jksFile = args[i + 1];
             if (args[i].equals("-h") || args[i].equals("--help")) help();
@@ -83,7 +87,10 @@ class Server {
             "/api/status"
     };
 
-    Server() {
+    private Settings settings;
+
+    Server(Settings settings) {
+        this.settings = settings;
         jinja = new Jinjava();
         log = LoggerFactory.getLogger(Main.class);
         bootTime = new Date();
@@ -91,9 +98,9 @@ class Server {
     }
 
     private void initDatabase() {
-        CodecRegistry pojoCodecRegistry = fromRegistries(MongoClient.getDefaultCodecRegistry(),
+        CodecRegistry pojoCodecRegistry = fromRegistries(com.mongodb.MongoClient.getDefaultCodecRegistry(),
                 fromProviders(PojoCodecProvider.builder().automatic(true).build()));
-        MongoClient client = new MongoClient("localhost", MongoClientOptions.builder().codecRegistry(pojoCodecRegistry).build());
+        MongoClient client = MongoClients.create(MongoClientSettings.builder().codecRegistry(pojoCodecRegistry).credential(MongoCredential.createCredential(settings.mongodbUsername, "eberlein", settings.mongodbPassword.toCharArray())).applyToClusterSettings(builder -> builder.hosts(Arrays.asList(new ServerAddress("127.0.0.1", 27017)))).build());
         MongoDatabase db = client.getDatabase("eberlein");
         events = db.getCollection("event", Event.class);
         pages = db.getCollection("page", DataEntity.class);
@@ -106,7 +113,7 @@ class Server {
         if (stats.find(eq("name", "scans")).first() == null) stats.insertOne(new CountStatistic("scans", 0));
     }
 
-    void main(Settings settings) {
+    void main() {
         if (settings.jksFile != null && settings.jksPassword != null) {
             secure(settings.jksFile, settings.jksPassword, null, null);
             port(settings.port);
