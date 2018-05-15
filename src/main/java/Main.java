@@ -42,8 +42,8 @@ class Settings {
     String jksPassword;
 
     int mongodbPort = 27017;
-    String mongodbUsername;
-    String mongodbPassword;
+    String mongodbUsername = "admin";
+    String mongodbPassword = "admin";
 
     Settings(String[] args) {
         for (int i = 0; i < args.length; i++) {
@@ -59,7 +59,7 @@ class Settings {
     private void help() {
         System.out.println("usage: java -jar website.jar [arguments]");
         System.out.println("-h\t--help\tthis");
-        System.out.println("-p\t--port\tport");
+        System.out.println("--mongodb-port");
         System.out.println("--mongodb-username");
         System.out.println("--mongodb-password");
         System.out.println("--jks-file\tkeystore file");
@@ -102,7 +102,12 @@ class Server {
     private void initDatabase() {
         CodecRegistry pojoCodecRegistry = fromRegistries(com.mongodb.MongoClient.getDefaultCodecRegistry(),
                 fromProviders(PojoCodecProvider.builder().automatic(true).build()));
-        MongoClient client = MongoClients.create(MongoClientSettings.builder().codecRegistry(pojoCodecRegistry).credential(MongoCredential.createCredential(settings.mongodbUsername, "eberlein", settings.mongodbPassword.toCharArray())).applyToClusterSettings(builder -> builder.hosts(Arrays.asList(new ServerAddress("127.0.0.1", settings.mongodbPort)))).build());
+        MongoClientSettings.Builder mcsb = MongoClientSettings.builder();
+        mcsb.applyToClusterSettings(builder -> builder.hosts(Arrays.asList(new ServerAddress("127.0.0.1", settings.mongodbPort))));
+        mcsb.codecRegistry(pojoCodecRegistry);
+        if (settings.mongodbUsername != null && settings.mongodbPassword != null)
+            mcsb.credential(MongoCredential.createCredential(settings.mongodbUsername, "eberlein", settings.mongodbPassword.toCharArray()));
+        MongoClient client = MongoClients.create(mcsb.build());
         MongoDatabase db = client.getDatabase("eberlein");
         events = db.getCollection("event", Event.class);
         pages = db.getCollection("page", DataEntity.class);
