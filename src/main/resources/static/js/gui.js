@@ -65,7 +65,12 @@ let p = null;
 let m = null;
 
 function initBackground() {
-    p = Particles.init({selector: '.background', color: '#0f0f0f', connectParticles: true});
+    p = Particles.init({
+        selector: '.background',
+        color: '#0f0f0f',
+        connectParticles: true,
+        maxParticles: /Mobi/.test(navigator.userAgent) ? 42 : 100
+    });
     m = new Mandelbrot(document.querySelector('canvas'), 2100);
 }
 
