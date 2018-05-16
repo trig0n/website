@@ -1,3 +1,5 @@
+@import url('{{fontURL}}');
+
 html, body {
     margin: 0;
     padding: 0;
@@ -15,4 +17,24 @@ html, body {
 #content {
     overflow: scroll;
     height: 75vh;
+}
+
+#content-container {
+
+font-family: {
+
+{
+    fontFamily
+}
+}
+}
+
+#navbar-container {
+
+font-family: {
+
+{
+    fontFamily
+}
+}
 }

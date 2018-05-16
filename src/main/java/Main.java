@@ -1,4 +1,6 @@
 import com.alibaba.fastjson.JSON;
+import com.google.common.base.Charsets;
+import com.google.common.io.Resources;
 import com.hubspot.jinjava.Jinjava;
 import com.mongodb.MongoClientSettings;
 import com.mongodb.MongoCredential;
@@ -13,11 +15,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import spark.Request;
 
+import java.io.IOException;
 import java.text.SimpleDateFormat;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -38,16 +39,17 @@ public class Main {
 }
 
 class Settings {
-    String jksFile;
-    String jksPassword;
-
+    String jksFile = null;
+    String jksPassword = null;
+    int port = 80;
     int mongodbPort = 27017;
-    String mongodbUsername = "admin";
-    String mongodbPassword = "admin";
+    String mongodbUsername = null;
+    String mongodbPassword = null;
 
     Settings(String[] args) {
         for (int i = 0; i < args.length; i++) {
             if (args[i].equals("--mongodb-port")) this.mongodbPort = new Integer(args[i + 1]);
+            if (args[i].equals("--port")) this.port = new Integer(args[i + 1]);
             if (args[i].equals("--mongodb-username")) mongodbUsername = args[i + 1];
             if (args[i].equals("--mongodb-password")) mongodbPassword = args[i + 1];
             if (args[i].equals("--jks-pass")) this.jksPassword = args[i + 1];
@@ -59,6 +61,7 @@ class Settings {
     private void help() {
         System.out.println("usage: java -jar website.jar [arguments]");
         System.out.println("-h\t--help\tthis");
+        System.out.println("--port");
         System.out.println("--mongodb-port");
         System.out.println("--mongodb-username");
         System.out.println("--mongodb-password");
@@ -82,12 +85,16 @@ class Server {
     private static final SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm");
     private static final String[] allowed_urls = {
             "/",
+            "/gen/gui.css",
             "/api/content/event",
             "/api/content/page",
             "/api/content/search",
             "/api/stat",
             "/api/status"
     };
+    private static final Random random = new Random();
+    private Map<String, String> allowed_fonts = new HashMap<>();
+    private String guiCss;
 
     private Settings settings;
 
@@ -97,6 +104,36 @@ class Server {
         log = LoggerFactory.getLogger(Main.class);
         bootTime = new Date();
         initDatabase();
+        loadGuiCss();
+        initFonts();
+    }
+
+    private void initFonts() {
+        allowed_fonts.put("'Unica One', cursive;", "https://fonts.googleapis.com/css?family=Unica+One");
+        allowed_fonts.put("'Roboto', sans-serif;", "https://fonts.googleapis.com/css?family=Roboto");
+        allowed_fonts.put("'Open Sans', sans-serif;", "https://fonts.googleapis.com/css?family=Open+Sans");
+        allowed_fonts.put("'Lato', sans-serif;", "https://fonts.googleapis.com/css?family=Lato");
+        allowed_fonts.put("'Raleway', sans-serif;", "https://fonts.googleapis.com/css?family=Raleway");
+        allowed_fonts.put("'Noto Sans', sans-serif;", "https://fonts.googleapis.com/css?family=Noto+Sans");
+        allowed_fonts.put("'Ubuntu', sans-serif;", "https://fonts.googleapis.com/css?family=Ubuntu");
+        allowed_fonts.put("'Lora', serif;", "https://fonts.googleapis.com/css?family=Lora");
+        allowed_fonts.put("'Titillium Web', sans-serif;", "https://fonts.googleapis.com/css?family=Titillium+Web");
+        allowed_fonts.put("'Arimo', sans-serif;", "https://fonts.googleapis.com/css?family=Arimo");
+        allowed_fonts.put("'Nunito', sans-serif;", "https://fonts.googleapis.com/css?family=Nunito");
+        allowed_fonts.put("'Bitter', serif;", "https://fonts.googleapis.com/css?family=Bitter");
+        allowed_fonts.put("'Quicksand', sans-serif;", "https://fonts.googleapis.com/css?family=Quicksand");
+        allowed_fonts.put("'Great Vibes', cursive;", "https://fonts.googleapis.com/css?family=Great+Vibes");
+        allowed_fonts.put("'Orbitron', sans-serif;", "https://fonts.googleapis.com/css?family=Orbitron");
+        allowed_fonts.put("'Jura', sans-serif;", "https://fonts.googleapis.com/css?family=Jura");
+    }
+
+    private void loadGuiCss() {
+        try {
+            guiCss = Resources.toString(Resources.getResource("static/css/gui.css"), Charsets.UTF_8);
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.exit(-1);
+        }
     }
 
     private void initDatabase() {
@@ -126,7 +163,7 @@ class Server {
             port(443);
             log.info("using " + settings.jksFile + " for ssl encryption over port 443");
         } else {
-            port(80);
+            port(settings.port);
         }
 
         staticFiles.location("static/");
@@ -136,6 +173,13 @@ class Server {
         get("/", (req, resp) -> {
             Map<String, Object> objs = new HashMap<>();
             return jinja.render(templates.find(eq("name", "gui")).first().getData(), objs);
+        });
+
+        path("/gen", () -> {
+            get("/gui.css", (req, resp) -> {
+                String k = (String) allowed_fonts.keySet().toArray()[ThreadLocalRandom.current().nextInt(0, allowed_fonts.size())];
+                return guiCss.replace("{{fontURL}}", allowed_fonts.get(k)).replace("{{fontFamily}}", k);
+            });
         });
 
         path("/api", () -> {
