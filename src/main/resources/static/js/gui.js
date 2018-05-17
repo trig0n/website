@@ -69,7 +69,7 @@ function initBackground() {
         selector: '.background',
         color: '#0f0f0f',
         connectParticles: true,
-        maxParticles: /Mobi/.test(navigator.userAgent) ? 42 : 100
+        maxParticles: /Mobi/.test(navigator.userAgent) ? 24 : 100
     });
     m = new Mandelbrot(document.querySelector('canvas'), 2100);
 }

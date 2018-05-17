@@ -125,6 +125,11 @@ class Server {
         allowed_fonts.put("'Great Vibes', cursive;", "https://fonts.googleapis.com/css?family=Great+Vibes");
         allowed_fonts.put("'Orbitron', sans-serif;", "https://fonts.googleapis.com/css?family=Orbitron");
         allowed_fonts.put("'Jura', sans-serif;", "https://fonts.googleapis.com/css?family=Jura");
+        allowed_fonts.put("'Monoton', cursive;", "https://fonts.googleapis.com/css?family=Monoton");
+        allowed_fonts.put("'Marck Script', cursive;", "https://fonts.googleapis.com/css?family=Marck+Script");
+        allowed_fonts.put("'VT323', monospace;", "https://fonts.googleapis.com/css?family=VT323");
+        allowed_fonts.put("'Glegoo', serif;", "https://fonts.googleapis.com/css?family=Glegoo");
+        allowed_fonts.put("'Patrick Hand', cursive;", "https://fonts.googleapis.com/css?family=Patrick+Hand");
     }
 
     private void loadGuiCss() {
