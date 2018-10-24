@@ -1,0 +1,78 @@
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>eberlein.io{% if title %} :: {{ title }}{% endif %}</title>
+    <link rel="stylesheet" href="/gen/gui.css">
+    <link rel="stylesheet" href="/css/bulma.css">
+    <script src="/js/gui.js"></script>
+    <script src="/js/particles.js"></script>
+    <script src="/js/mandelbrot.js"></script>
+</head>
+<body>
+&nbsp;
+<div class="container" id="navbar-container">
+    <nav class="navbar box" role="navigation" aria-label="main navigation">
+        <div class="navbar-brand">
+            <a class="navbar-item">eberlein.io</a>
+            <button class="button navbar-burger" id="navToggle"><span></span><span></span><span></span></button>
+        </div>
+        <div class="navbar-menu" id="navMenu">
+            <div class="navbar-end">
+                <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">bg</a>
+                    <div class="navbar-dropdown">
+                        <a class="navbar-item" onclick="dynamicBackground();">dynamic</a>
+                        <a class="navbar-item" onclick="mandelbrotBackground();">mandelbrot</a>
+                        <a class="navbar-item" onclick="dynamicMandelbrotBackground();">zooming mandelbrot</a>
+                        <a class="navbar-item" onclick="whiteBackground();">white</a>
+                    </div>
+                </div>
+                <div class="navbar-item">
+                    <div class="field has-addons">
+                        <div class="control"><input id="search" class="input" type="text" placeholder="search"
+                                                    onchange="search(this.value);"></div>
+                        <div class="control">
+                            <button type="submit" class="button is-link"
+                                    onclick="search(document.getElementById('search').value);">&#x1F50E;
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+</div>
+&nbsp;
+<div class="container" id="content-container">
+    <div class="columns">
+        <div class="column is-one-quarter">
+            <aside class="menu box">
+                <ul class="menu-list">
+                    <li><a class="is-active" id="home" onclick="setActive(this.id);">home</a></li>
+                    <li><a id="about" onclick="setActive(this.id);">about</a></li>
+                    <li><a id="contact" onclick="setActive(this.id);">contact</a></li>
+                    <li><a id="feed" onclick="setActive(this.id);">feed</a></li>
+                    <li><a href="https://github.com/Trig0n">github</a></li>
+                </ul>
+            </aside>
+        </div>
+        <div class="column">
+            <noscript>
+                <article class="message is-danger">
+                    <div class="message-header">
+                        <p>enable js</p>
+                        <button class="delete" aria-label="delete"></button>
+                    </div>
+                    <div class="message-body">this site needs javascript to work properly.</div>
+                </article>
+            </noscript>
+            <div id="searchResults"></div>
+            <div class="box">
+                <div class="media-content content" id="content"></div>
+            </div>
+        </div>
+    </div>
+</div>
+<canvas id="background" class="background"></canvas>
+</body>
+</html>

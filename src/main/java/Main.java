@@ -76,10 +76,8 @@ class Server {
     private Date bootTime;
     private Jinjava jinja;
     private MongoCollection<Event> events;
-    private MongoCollection<DataEntity> pages;
     private MongoCollection<Host> hosts;
     private MongoCollection<CountStatistic> stats;
-    private MongoCollection<DataEntity> templates;
     private Logger log;
 
     private static final SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm");
@@ -152,14 +150,25 @@ class Server {
         MongoClient client = MongoClients.create(mcsb.build());
         MongoDatabase db = client.getDatabase("eberlein");
         events = db.getCollection("event", Event.class);
-        pages = db.getCollection("page", DataEntity.class);
         hosts = db.getCollection("host", Host.class);
-        templates = db.getCollection("template", DataEntity.class);
         stats = db.getCollection("stat", CountStatistic.class);
         stats.createIndex(Indexes.ascending("count"));
 
         if (stats.find(eq("name", "hits")).first() == null) stats.insertOne(new CountStatistic("hits", 0));
         if (stats.find(eq("name", "scans")).first() == null) stats.insertOne(new CountStatistic("scans", 0));
+    }
+
+    private String getResourceString(String path) {
+        try {
+            return Resources.toString(Resources.getResource(path), Charsets.UTF_8);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return "";
+        }
+    }
+
+    private String getTemplatesString(String path) {
+        return getResourceString("static/templates/" + path);
     }
 
     void main() {
@@ -177,7 +186,7 @@ class Server {
 
         get("/", (req, resp) -> {
             Map<String, Object> objs = new HashMap<>();
-            return jinja.render(templates.find(eq("name", "gui")).first().getData(), objs);
+            return jinja.render(getTemplatesString("template/gui.html"), objs);
         });
 
         path("/gen", () -> {
@@ -232,7 +241,7 @@ class Server {
         FindIterable<Event> items = events.find(regex("name", "(?i).*" + Pattern.quote(query) + ".*")).sort(Sorts.descending("id"));
         if (items.first() != null) o.put("feed", items);
         else o.put("searchNone", true);
-        return jinja.render(pages.find(eq("name", "feed")).first().getData(), o);
+        return jinja.render(getTemplatesString("page/feed.html"), o);
     }
 
     private String getEventHtml(String key) {
@@ -260,17 +269,17 @@ class Server {
         String data;
         switch (key) {
             case "about":
-                data = pages.find(eq("name", "about")).first().getData();
+                data = getTemplatesString("page/about.html");
                 break;
             case "contact":
-                data = pages.find(eq("name", "contact")).first().getData();
+                data = getTemplatesString("page/contact.html");
                 break;
             case "feed":
-                data = pages.find(eq("name", "feed")).first().getData();
+                data = getTemplatesString("page/feed.html");
                 objects.put("feed", events.find().sort(Sorts.descending("id")));
                 break;
             case "home":
-                data = pages.find(eq("name", "home")).first().getData();
+                data = getTemplatesString("page/home.html");
                 objects.put("hits", stats.find(eq("name", "hits")).first().getValue());
                 objects.put("scans", stats.find(eq("name", "scans")).first().getValue());
                 objects.put("bootTime", dateFormat.format(bootTime.getTime()));

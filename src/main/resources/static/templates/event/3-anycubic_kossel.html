@@ -1,0 +1,61 @@
+<h2 class="title">anycubic kossel</h2>
+<nav class="breadcrumb" aria-label="breadcrumbs">
+    <ul>
+        <li><a href="#tuning">tuning</a></li>
+        <li><a href="#slicer-settings">slicer settings</a></li>
+        <li><a href="#printing">printing</a></li>
+    </ul>
+</nav>
+
+<div id="tuning">
+    <h4 class="subtitle">tuning</h4>
+    <p>you will need to tune 3 things: <a href="#height-tuning">height</a>, <a href="#extrusion-length-tuning">extrusion
+        length</a>, <a href="#stepper-driver-tuning">stepper drivers</a></p>
+    <h4 id="height-tuning">height</h4>
+    <p>
+        adjust your endstops, so they are at the same height<br>
+        home and move down until you can just fit a piece paper under the nozzle<br>
+        adapt the height in the firmware to your z value at that position
+    </p>
+    <h4 id="extrusion-length-tuning">extrusion length</h4>
+    <p>
+        measure & mark x cm of your filament and extrude x cm from your preferred printer client software<br>
+        measure and check if marked filament moved x cm<br>
+        adapt the steps per mm in your firmware if needed and repeat<br>
+    </p>
+    <h4 id="stepper-driver-tuning">stepper drivers</h4>
+    <p>
+        normally they should work in between .4 - .6 V pretty well<br>
+        just don't let your steppers get too hot<br>
+        you shouldn't burn your hand touching them
+    </p>
+    <figure class="image"><img src="/img/driver_trigorilla_annotated.jpg"></figure>
+    <p>for measuring you should connect your multimeter's + to the voltage regulator and the ground pin to your
+        multimeter's -<br>
+        adjust and measure again
+    </p>
+</div>
+<br>
+<div id="slicer-settings">
+    <h4>slicer settings</h4>
+    <p>
+        print speed: 15-30mm/s (depending on wanted quality)<br>
+        layer height: 0.1mm<br>
+        top/bottom/wall speed: 15mm/s<br>
+        inner wall speed: 30mm/s<br>
+        outer wall speed: 15 mm/s<br>
+        travel speed: 30-60 mm/s (depending on wanted quality)<br>
+        retraction distance: 4.2mm<br>
+        alternating skin rotation: true<br>
+        adaptive layers: true<br>
+        <br>
+        if support:<br>
+        pattern: triangles<br>
+        towers: true<br>
+    </p>
+</div>
+<br>
+<div id="printing">
+    <h4 class="subtitle">printing</h4>
+    under construction
+</div>

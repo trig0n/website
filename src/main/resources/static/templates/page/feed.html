@@ -1,0 +1,18 @@
+{% if searchNone %}
+<div class="notification is-danger">
+    <button class="delete"></button>
+    can not find anything with that query
+</div>{% endif %}
+{% for event in feed %}
+<div class="box">
+    <article class="media">
+        <div class="media-content">
+            <div class="content">
+                <p>
+                    <a onclick="request('/api/content/event', 'POST', JSON.stringify({'name': '{{ event.name }}'}), setContent);">{{
+                        event.name }}</a></p>
+                <p>{{ event.description }}</p>
+            </div>
+        </div>
+    </article>
+</div>{% endfor %}
