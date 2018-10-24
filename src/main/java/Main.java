@@ -48,8 +48,8 @@ class Settings {
 
     Settings(String[] args) {
         for (int i = 0; i < args.length; i++) {
-            if (args[i].equals("--mongodb-port")) this.mongodbPort = new Integer(args[i + 1]);
-            if (args[i].equals("--port")) this.port = new Integer(args[i + 1]);
+            if (args[i].equals("--mongodb-port")) this.mongodbPort = Integer.valueOf(args[i + 1]);
+            if (args[i].equals("--port")) this.port = Integer.valueOf(args[i + 1]);
             if (args[i].equals("--mongodb-username")) mongodbUsername = args[i + 1];
             if (args[i].equals("--mongodb-password")) mongodbPassword = args[i + 1];
             if (args[i].equals("--jks-pass")) this.jksPassword = args[i + 1];

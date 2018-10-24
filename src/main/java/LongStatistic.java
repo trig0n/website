@@ -4,7 +4,7 @@ public class LongStatistic {
 
     public LongStatistic(String name) {
         this.name = name;
-        value = new Long("0");
+        value = 0L;
     }
 
     public LongStatistic(String name, Long value) {
