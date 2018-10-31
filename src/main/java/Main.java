@@ -5,9 +5,11 @@ import com.hubspot.jinjava.Jinjava;
 import com.mongodb.MongoClientSettings;
 import com.mongodb.MongoCredential;
 import com.mongodb.ServerAddress;
-import com.mongodb.client.*;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Indexes;
-import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.Updates;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.codecs.pojo.PojoCodecProvider;
@@ -15,15 +17,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import spark.Request;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 
 import static com.mongodb.client.model.Filters.eq;
-import static com.mongodb.client.model.Filters.regex;
 import static org.bson.codecs.configuration.CodecRegistries.fromProviders;
 import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
 import static spark.Spark.*;
@@ -75,7 +78,6 @@ class Settings {
 class Server {
     private Date bootTime;
     private Jinjava jinja;
-    private MongoCollection<Event> events;
     private MongoCollection<Host> hosts;
     private MongoCollection<CountStatistic> stats;
     private Logger log;
@@ -90,9 +92,9 @@ class Server {
             "/api/stat",
             "/api/status"
     };
-    private static final Random random = new Random();
     private Map<String, String> allowed_fonts = new HashMap<>();
     private String guiCss;
+    private List<Event> events;
 
     private Settings settings;
 
@@ -103,6 +105,7 @@ class Server {
         bootTime = new Date();
         initDatabase();
         loadGuiCss();
+        loadEvents();
         initFonts();
     }
 
@@ -130,6 +133,20 @@ class Server {
         allowed_fonts.put("'Patrick Hand', cursive;", "https://fonts.googleapis.com/css?family=Patrick+Hand");
     }
 
+    private void loadEvents() {
+        events = new ArrayList<>();
+        for (String e : getResources("static/templates/event")) {
+            String n = e.substring(0, e.indexOf("."));
+            Event t = new Event();
+            t.setHtml(getResourceString("static/templates/event/" + e));
+            t.setName(n);
+            t.setDescription("todo");
+            events.add(t);
+        }
+        Collections.reverse(events);
+        System.out.println("found " + String.valueOf(events.size()) + " events");
+    }
+
     private void loadGuiCss() {
         try {
             guiCss = Resources.toString(Resources.getResource("static/css/gui.css"), Charsets.UTF_8);
@@ -149,7 +166,6 @@ class Server {
             mcsb.credential(MongoCredential.createCredential(settings.mongodbUsername, "eberlein", settings.mongodbPassword.toCharArray()));
         MongoClient client = MongoClients.create(mcsb.build());
         MongoDatabase db = client.getDatabase("eberlein");
-        events = db.getCollection("event", Event.class);
         hosts = db.getCollection("host", Host.class);
         stats = db.getCollection("stat", CountStatistic.class);
         stats.createIndex(Indexes.ascending("count"));
@@ -164,6 +180,25 @@ class Server {
         } catch (IOException e) {
             e.printStackTrace();
             return "";
+        }
+    }
+
+    private InputStream getResourceAsStream(String resource) {
+        final InputStream in = Thread.currentThread().getContextClassLoader().getResourceAsStream(resource);
+        return in == null ? getClass().getResourceAsStream(resource) : in;
+    }
+
+    private List<String> getResources(String path) {
+        try {
+            List<String> fns = new ArrayList<>();
+            InputStream in = getResourceAsStream(path);
+            BufferedReader br = new BufferedReader(new InputStreamReader(in));
+            String r;
+            while ((r = br.readLine()) != null) fns.add(r);
+            return fns;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return new ArrayList<>();
         }
     }
 
@@ -200,7 +235,7 @@ class Server {
             path("/content", () -> {
                 post("/event", (req, resp) -> {
                     ContentRequest cr = JSON.parseObject(req.body(), ContentRequest.class);
-                    return JSON.toJSONString(new ContentResponse(cr.getName(), getEventHtml(cr.getName())));
+                    return JSON.toJSONString(new ContentResponse(cr.getName(), getResourceString("static/templates/event/" + cr.getName() + ".html")));
                 });
 
                 post("/page", (req, resp) -> {
@@ -224,7 +259,6 @@ class Server {
                 resp.body("up");
                 return resp;
             });
-
         });
 
         get("/robots.txt", (req, resp) -> {
@@ -238,14 +272,11 @@ class Server {
 
     private String getSearchItems(String query) {
         HashMap<String, Object> o = new HashMap<>();
-        FindIterable<Event> items = events.find(regex("name", "(?i).*" + Pattern.quote(query) + ".*")).sort(Sorts.descending("id"));
-        if (items.first() != null) o.put("feed", items);
-        else o.put("searchNone", true);
+        List<Event> _events = new ArrayList<>();
+        for (Event e : events) if (e.getDescription().contains(query) || e.getName().contains(query)) _events.add(e);
+        o.put("feed", _events);
+        if (_events.size() == 0) o.put("searchNone", true);
         return jinja.render(getTemplatesString("page/feed.html"), o);
-    }
-
-    private String getEventHtml(String key) {
-        return events.find(eq("name", key)).first().getHtml();
     }
 
     private void checkRequest(Request r) {
@@ -276,7 +307,7 @@ class Server {
                 break;
             case "feed":
                 data = getTemplatesString("page/feed.html");
-                objects.put("feed", events.find().sort(Sorts.descending("id")));
+                objects.put("feed", events);
                 break;
             case "home":
                 data = getTemplatesString("page/home.html");
