@@ -11,8 +11,7 @@
                 <p>
                     <a onclick="request('/api/content/event', 'POST', JSON.stringify({'name': '{{ event.name }}'}), setContent);">{{
                         event.name }}</a></p>
-                <p>{{ event.description }}</p>
             </div>
         </div>
     </article>
-</div>&nbsp;{% endfor %}
+</div>{% endfor %}&nbsp;

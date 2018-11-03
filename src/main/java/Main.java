@@ -17,10 +17,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import spark.Request;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
@@ -44,6 +43,7 @@ public class Main {
 class Settings {
     String jksFile = null;
     String jksPassword = null;
+    String templates = null;
     int port = 80;
     int mongodbPort = 27017;
     String mongodbUsername = null;
@@ -57,6 +57,7 @@ class Settings {
             if (args[i].equals("--mongodb-password")) mongodbPassword = args[i + 1];
             if (args[i].equals("--jks-pass")) this.jksPassword = args[i + 1];
             if (args[i].equals("--jks-file")) this.jksFile = args[i + 1];
+            if (args[i].equals("--templates")) this.templates = args[i + 1];
             if (args[i].equals("-h") || args[i].equals("--help")) help();
         }
     }
@@ -65,6 +66,7 @@ class Settings {
         System.out.println("usage: java -jar website.jar [arguments]");
         System.out.println("-h\t--help\tthis");
         System.out.println("--port");
+        System.out.println("--templates");
         System.out.println("--mongodb-port");
         System.out.println("--mongodb-username");
         System.out.println("--mongodb-password");
@@ -96,6 +98,12 @@ class Server {
     private String guiCss;
     private List<Event> events;
 
+    private String gui;
+    private String feed;
+    private String home;
+    private String about;
+    private String contact;
+
     private Settings settings;
 
     Server(Settings settings) {
@@ -105,7 +113,8 @@ class Server {
         bootTime = new Date();
         initDatabase();
         loadGuiCss();
-        loadEvents();
+        loadHtml(settings.templates);
+        loadEvents(settings.templates);
         initFonts();
     }
 
@@ -133,17 +142,44 @@ class Server {
         allowed_fonts.put("'Patrick Hand', cursive;", "https://fonts.googleapis.com/css?family=Patrick+Hand");
     }
 
-    private void loadEvents() {
+    private void loadHtml(String templates) {
+        if (!templates.endsWith("/")) templates += "/";
+        try {
+            gui = new String(Files.readAllBytes(Paths.get(templates + "template/gui.html")), Charsets.UTF_8);
+            home = new String(Files.readAllBytes(Paths.get(templates + "page/home.html")), Charsets.UTF_8);
+            feed = new String(Files.readAllBytes(Paths.get(templates + "page/feed.html")), Charsets.UTF_8);
+            about = new String(Files.readAllBytes(Paths.get(templates + "page/about.html")), Charsets.UTF_8);
+            contact = new String(Files.readAllBytes(Paths.get(templates + "page/contact.html")), Charsets.UTF_8);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void loadEvents(String templates) {
+        if (!templates.endsWith("/")) templates += "/";
         events = new ArrayList<>();
-        for (String e : getResources("static/templates/event")) {
-            String n = e.substring(0, e.indexOf("."));
+        File template_directory = new File(templates + "event/");
+        for (File e : template_directory.listFiles()) {
+            String n = e.getName();
+            n = n.substring(0, n.indexOf("."));
             Event t = new Event();
-            t.setHtml(getResourceString("static/templates/event/" + e));
+            try {
+                t.setHtml(new String(Files.readAllBytes(e.toPath()), Charsets.UTF_8));
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
             t.setName(n);
             t.setDescription("todo");
             events.add(t);
         }
-        Collections.reverse(events);
+        Collections.sort(events, new Comparator<Event>() {
+            @Override
+            public int compare(Event event, Event t1) {
+                int e1 = Integer.valueOf(event.getName().split("-")[0]);
+                int e2 = Integer.valueOf(t1.getName().split("-")[0]);
+                return Integer.compare(e2, e1);
+            }
+        });
         System.out.println("found " + String.valueOf(events.size()) + " events");
     }
 
@@ -174,18 +210,10 @@ class Server {
         if (stats.find(eq("name", "scans")).first() == null) stats.insertOne(new CountStatistic("scans", 0));
     }
 
-    private String getResourceString(String path) {
-        try {
-            return Resources.toString(Resources.getResource(path), Charsets.UTF_8);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return "";
-        }
-    }
 
     private InputStream getResourceAsStream(String resource) {
-        final InputStream in = Thread.currentThread().getContextClassLoader().getResourceAsStream(resource);
-        return in == null ? getClass().getResourceAsStream(resource) : in;
+        final InputStream in = this.getClass().getClassLoader().getResourceAsStream(resource);
+        return in == null ? this.getClass().getClassLoader().getResourceAsStream(resource) : in;
     }
 
     private List<String> getResources(String path) {
@@ -202,8 +230,11 @@ class Server {
         }
     }
 
-    private String getTemplatesString(String path) {
-        return getResourceString("static/templates/" + path);
+    String getEventHtml(String name) {
+        for (Event e : events) {
+            if (e.getName().equals(name)) return e.getHtml();
+        }
+        return "";
     }
 
     void main() {
@@ -221,7 +252,7 @@ class Server {
 
         get("/", (req, resp) -> {
             Map<String, Object> objs = new HashMap<>();
-            return jinja.render(getTemplatesString("template/gui.html"), objs);
+            return jinja.render(gui, objs);
         });
 
         path("/gen", () -> {
@@ -235,7 +266,7 @@ class Server {
             path("/content", () -> {
                 post("/event", (req, resp) -> {
                     ContentRequest cr = JSON.parseObject(req.body(), ContentRequest.class);
-                    return JSON.toJSONString(new ContentResponse(cr.getName(), getResourceString("static/templates/event/" + cr.getName() + ".html")));
+                    return JSON.toJSONString(new ContentResponse(cr.getName(), getEventHtml(cr.getName())));
                 });
 
                 post("/page", (req, resp) -> {
@@ -276,7 +307,7 @@ class Server {
         for (Event e : events) if (e.getDescription().contains(query) || e.getName().contains(query)) _events.add(e);
         o.put("feed", _events);
         if (_events.size() == 0) o.put("searchNone", true);
-        return jinja.render(getTemplatesString("page/feed.html"), o);
+        return jinja.render(feed, o);
     }
 
     private void checkRequest(Request r) {
@@ -300,17 +331,17 @@ class Server {
         String data;
         switch (key) {
             case "about":
-                data = getTemplatesString("page/about.html");
+                data = about;
                 break;
             case "contact":
-                data = getTemplatesString("page/contact.html");
+                data = contact;
                 break;
             case "feed":
-                data = getTemplatesString("page/feed.html");
+                data = feed;
                 objects.put("feed", events);
                 break;
             case "home":
-                data = getTemplatesString("page/home.html");
+                data = home;
                 objects.put("hits", stats.find(eq("name", "hits")).first().getValue());
                 objects.put("scans", stats.find(eq("name", "scans")).first().getValue());
                 objects.put("bootTime", dateFormat.format(bootTime.getTime()));

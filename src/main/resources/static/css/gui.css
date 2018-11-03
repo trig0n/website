@@ -15,26 +15,6 @@ html, body {
 }
 
 #content {
-    overflow: scroll;
+    overflow: auto;
     height: 75vh;
-}
-
-#content-container {
-
-font-family: {
-
-{
-    fontFamily
-}
-}
-}
-
-#navbar-container {
-
-font-family: {
-
-{
-    fontFamily
-}
-}
 }
